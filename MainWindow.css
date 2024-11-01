@@ -1,0 +1,49 @@
+QWidget {
+    font: 11pt "MS Shell Dlg 2";
+    background-color: #f0f0f0;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+}
+
+QTableWidget {
+    font-family: Arial, sans-serif;
+    font-size: 20px;
+    border: 1px solid #ccc;
+    border-radius: 10px;  /* Скругление углов таблицы */
+    padding: 5px;
+    background-color: #ffffff;
+}
+
+QTableWidget::item {
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+QHeaderView::section {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px;
+    font-weight: bold;
+}
+
+QTableWidget::item:selected {
+    background-color: #d1e7dd; /* Цвет выделенной строки */
+    color: black;
+}
+
+QPushButton {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px;
+    border: none;
+    border-radius: 10px;  /* Скругление углов кнопок */
+    font-size: 16px;
+}
+
+QPushButton:hover {
+    background-color: #45a049; /* Цвет кнопки при наведении */
+}
+
+QPushButton:disabled {
+    background-color: #1f5721; /* Цвет кнопки при нажатии */
+}

@@ -9,6 +9,10 @@ class PairTime:  # pair: start, end, pair_type
 
     def __repr__(self):
         return f"({self.start}-{self.end}, {self.pair_type})"
+    
+    def get_str(self):
+        return (f"{str(self.start.hour).rjust(2, '0')}:{str(self.start.minute).rjust(2, '0')} - "
+                f"{str(self.end.hour).rjust(2, '0')}:{str(self.end.minute).rjust(2, '0')}")
 
 
 days = ("Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье")
