@@ -1,5 +1,4 @@
 import db
-import random
 
 
 def show_schedule(schedule: dict[str, list[db.Pair]]):
