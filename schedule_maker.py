@@ -2,10 +2,11 @@ import db
 
 
 class ScheduleError(ValueError):
-    def __init__(self, message: str, discipline=None, group=None):
+    def __init__(self, message: str, discipline=None, group=None, hours=None):
         super().__init__(message)
         self.discipline = discipline
         self.group = group
+        self.hours = hours
 
 
 def show_schedule(schedule: dict[str, list[db.Pair]]):
@@ -41,31 +42,37 @@ def make_schedule(existing_pairs: list[db.Pair], discipline: str, group: str, te
                 classroom=None
             )
             return pair  # Возвращаем объект пары
-    raise ScheduleError(f"Невозможно найти свободное время", discipline=discipline, group=group)
+    raise ScheduleError(
+        f"Невозможно найти свободное время",
+        discipline=discipline,
+        group=group
+    )
 
 
 def make_full_schedule() -> dict:
     full_schedule = {}  # Словарь для хранения расписания по группам
     errors = []
+    remaining_hours = {}
+    for rh in db.discipline_hours.copy():
+        remaining_hours[rh] = db.discipline_hours[rh].copy()
 
     for group in db.groups_shift.keys():
         full_schedule[group] = []  # Инициализируем список для каждой группы
         # Итерируемся по дисциплинам
-        for discipline in db.discipline_hours[group]:  # M получаем недельные часы по дисцип.
+        for discipline in remaining_hours[group]:  # M получаем недельные часы по дисцип.
             # Ищем подходящего преподавателя для дисциплины
-            if db.discipline_hours[group][discipline] == 0:  # M
+            if remaining_hours[group][discipline] == 0:  # M
                 continue
             for teacher in db.teachers.values():  # M у каждого препода есть группы за которые он отвечает и дисциплины
                 if not (discipline in teacher.disciplines and group in teacher.groups): continue
                 try:
-                    while db.discipline_hours[group][discipline] > 0:
-                        # chosen_schedule_time = [pr.pair_time for pr in full_schedule[group]]
+                    while remaining_hours[group][discipline] > 0:
                         pair = make_schedule(full_schedule[group], discipline, group, teacher)
                         full_schedule[group].append(pair)  # Добавляем пару в расписание
-                        db.discipline_hours[group][discipline] -= 2
+                        remaining_hours[group][discipline] -= 2
                 except ScheduleError as e:
+                    e.hours = remaining_hours[group][discipline]
                     errors.append(e)
-                    # print(f"Ошибка при составлении расписания для группы '{group}' и дисциплины '{discipline}': {e}")
                 break  # Прерываем поиск после нахождения первого подходящего преподавателя
     return full_schedule, errors  # Возвращаем полное расписание
 
