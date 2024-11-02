@@ -1,4 +1,9 @@
 from datetime import time, timedelta
+import pickle
+import os
+from abc import ABC, abstractmethod
+
+# region Classes
 
 
 class PairTime:  # pair: start, end, pair_type
@@ -13,9 +18,6 @@ class PairTime:  # pair: start, end, pair_type
     def get_str(self):
         return (f"{str(self.start.hour).rjust(2, '0')}:{str(self.start.minute).rjust(2, '0')} - "
                 f"{str(self.end.hour).rjust(2, '0')}:{str(self.end.minute).rjust(2, '0')}")
-
-
-days = ("Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье")
 
 
 class Pair:  # pair: date, day, number, pair_time, pair_type, group, teacher, classroom
@@ -43,16 +45,6 @@ class Teacher:  # teacher: name, disciplines, groups
 
     def __repr__(self):
         return f"{self.name}"
-
-
-teachers_schedule_time = {  # number: (start, end)
-    1: (time(8, 0), time(9, 30)),  # first pair for 1 shift, online for 2 shift
-    2: (time(9, 40), time(11, 10)),  # second pair for 1 shift
-    3: (time(11, 30), time(13, 0)),  # first pair for 2 shift, online for 3 shift
-    4: (time(13, 10), time(14, 40)),  # second pair for 2 shift
-    5: (time(15, 0), time(16, 30)),  # first pair for 3 shift
-    6: (time(16, 40), time(18, 10))  # second pair for 3 shift, online for 1 shift
-}
 
 
 class TeachersSchedule:  # teachers_schedule: day, pairs
@@ -120,163 +112,6 @@ class TeachersSchedule:  # teachers_schedule: day, pairs
         self.take_pair(day, pair_number)
 
 
-schedule_time_shift_1 = {  # time schedule for first shift
-    1: PairTime(time(8, 0), time(9, 30), "Онлайн"),
-    2: PairTime(time(9, 40), time(11, 10), "Офлайн"),
-    3: PairTime(time(16, 40), time(17, 40), "Офлайн"),
-}
-
-schedule_time_shift_2 = {  # time schedule for second shift
-    1: PairTime(time(8, 0), time(9, 0), "Онлайн"),
-    2: PairTime(time(11, 30), time(13, 0), "Офлайн"),
-    3: PairTime(time(13, 10), time(14, 40), "Офлайн"),
-}
-
-schedule_time_shift_3 = {  # time schedule for third shift
-    1: PairTime(time(11, 50), time(12, 50), "Онлайн"),
-    2: PairTime(time(15, 0), time(16, 30), "Офлайн"),
-    3: PairTime(time(16, 40), time(18, 10), "Офлайн"),
-}
-
-groups_shift = {  # shifts of groups
-    "П9024": schedule_time_shift_1,
-    "П9022": schedule_time_shift_2,
-    "П9021": schedule_time_shift_3,
-}
-
-discipline_hours = {  # on current week
-    "П9024": {
-        "Литература": 2,
-        "Физика": 0,
-        "Иностранный язык": 2,
-        "Математика": 4,
-        "Физическая культура": 2,
-        "Основы безопасности жизнедеятельности": 0,
-        "Информатика": 2,
-        "География": 4,
-        "Биология": 2,
-        "Химия": 0,
-        "Русский язык": 2,
-        "Обществознание": 4,
-        "История": 2,
-        "Индивидуальный проект": 0,
-        "Право": 2,
-    },
-    "П9022": {
-        "Литература": 2,
-        "Физика": 0,
-        "Иностранный язык": 2,
-        "Математика": 4,
-        "Физическая культура": 2,
-        "Основы безопасности жизнедеятельности": 0,
-        "Информатика": 2,
-        "География": 4,
-        "Биология": 2,
-        "Химия": 0,
-        "Русский язык": 2,
-        "Обществознание": 4,
-        "История": 2,
-        "Индивидуальный проект": 0,
-        "Право": 2,
-    },
-    "П9021": {
-        "Литература": 2,
-        "Физика": 0,
-        "Иностранный язык": 2,
-        "Математика": 4,
-        "Физическая культура": 2,
-        "Основы безопасности жизнедеятельности": 0,
-        "Информатика": 2,
-        "География": 4,
-        "Биология": 2,
-        "Химия": 0,
-        "Русский язык": 2,
-        "Обществознание": 4,
-        "История": 2,
-        "Индивидуальный проект": 0,
-        "Право": 2,
-    }
-}
-
-teachers = {  # random teachers
-    "Дмитриев Д.Д.": Teacher("Дмитриев Д.Д.", {"Информатика", "Индивидуальный проект"}, {"П9024"}),
-    "Александров А.А.": Teacher("Александров А.А.", {"Математика"}, {"П9024"}),
-    "Иванов И.И.": Teacher("Иванов И.И.", {"Математика", "Физика", "Информатика", "Индивидуальный проект"},
-                           {"П9022", "П9021"}),
-    "Петрова П.П.": Teacher("Петрова П.П.", {"Литература", "Русский язык"}, {"П9022"}),
-    "Владимирова В.П.": Teacher("Владимирова В.П.", {"Литература", "Русский язык"}, {"П9021"}),
-    "Данилова Д.Д.": Teacher("Данилова Д.Д.", {"Литература", "Русский язык"}, {"П9024"}),
-    "Сидорова С.С.": Teacher("Сидорова С.С.", {"География", "Биология", "Химия"}, {"П9022", "П9021", "П9024"}),
-    "Кузнецова К.К.": Teacher("Кузнецова К.К.", {"Обществознание", "История", "Право"}, {"П9021", "П9022", "П9024"}),
-    "Васильев В.В.": Teacher("Васильев В.В.", {"Физическая культура", "Основы безопасности жизнедеятельности"},
-                             {"П9021", "П9022", "П9024"}),
-    "Смирнова С.С.": Teacher("Смирнова С.С.", {"Иностранный язык"}, {"П9024"}),
-    "Смирнов В.С.": Teacher("Смирнов В.С.", {"Иностранный язык"}, {"П9022", "П9021"}),
-}
-
-teachers_work_hours = {  # on current week
-    "Дмитриев Д.Д.": TeachersSchedule(
-        mon=(True, True, True, True, True, True, True),
-        thu=(True, True, True, True, True, True, True),
-        fri=(True, True, True, True, True, True, True),
-    ),
-    "Александров А.А.": TeachersSchedule(
-        mon=(True, True, True, True, True, True, True),
-        tue=(True, True, True, True, True, True, True),
-        wed=(True, True, True, True, True, True, True),
-        thu=(True, True, True, True, True, True, True),
-        fri=(True, True, True, True, True, True, True),
-    ),
-    "Иванов И.И.": TeachersSchedule(
-        mon=(True, True, True, True, True, True, True),
-        wed=(True, True, True, True, True, True, True),
-        thu=(True, True, True, True, True, True, True),
-        fri=(True, True, True, True, True, True, True),
-    ),
-    "Петрова П.П.": TeachersSchedule(
-        mon=(True, True, True, True, True, True, True),
-        tue=(True, True, True, True, True, True, True),
-        wed=(True, True, True, True, True, True, True),
-    ),
-    "Владимирова В.П.": TeachersSchedule(
-        mon=(True, True, True, True, True, True, True),
-        tue=(True, True, True, True, True, True, True),
-    ),
-    "Данилова Д.Д.": TeachersSchedule(
-        mon=(True, True, True, True, True, True, True),
-        tue=(True, True, True, True, True, True, True),
-        fri=(True, True, True, True, True, True, True),
-    ),
-    "Сидорова С.С.": TeachersSchedule(
-        mon=(True, True, True, True, True, True, True),
-        tue=(True, True, True, True, True, True, True),
-        wed=(True, True, True, True, True, True, True),
-        thu=(True, True, True, True, True, True, True),
-        fri=(True, True, True, True, True, True, True),
-    ),
-    "Кузнецова К.К.": TeachersSchedule(
-        mon=(True, True, True, True, True, True, True),
-        wed=(True, True, True, True, True, True, True),
-        thu=(True, True, True, True, True, True, True),
-        fri=(True, True, True, True, True, True, True),
-    ),
-    "Васильев В.В.": TeachersSchedule(
-        mon=(True, True, True, True, True, True, True),
-        thu=(True, True, True, True, True, True, True),
-        fri=(True, True, True, True, True, True, True),
-    ),
-    "Смирнова С.С.": TeachersSchedule(
-        wed=(True, True, True, True, True, True, True),
-        thu=(True, True, True, True, True, True, True),
-        fri=(True, True, True, True, True, True, True),
-    ),
-    "Смирнов В.С.": TeachersSchedule(
-        mon=(True, True, True, True, True, True, True),
-        fri=(True, True, True, True, True, True, True),
-    )
-}
-
-
 class RoomSchedule:
     """
     False - Аудитория свободна
@@ -320,21 +155,241 @@ class Room:
     def __init__(self, is_online: bool = False) -> None:
         self.is_online = is_online
 
+# endregion
 
-rooms = {
-    "К1": Room(),
-    "К2": Room(),
-    "К3": Room(),
-    "Д1": Room(True),
-    "Д2": Room(True),
-    "Д3": Room(True),
+
+# region Constants
+
+days = ("Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье")
+
+# CONST
+teachers_schedule_time = {
+    1: (time(8, 0), time(9, 30)),  # first pair for 1 shift, online for 2 shift
+    2: (time(9, 40), time(11, 10)),  # second pair for 1 shift
+    3: (time(11, 30), time(13, 0)),  # first pair for 2 shift, online for 3 shift
+    4: (time(13, 10), time(14, 40)),  # second pair for 2 shift
+    5: (time(15, 0), time(16, 30)),  # first pair for 3 shift
+    6: (time(16, 40), time(18, 10))  # second pair for 3 shift, online for 1 shift
 }
 
-rooms_availability_hours = {
-    "К1": RoomSchedule(),
-    "К2": RoomSchedule(),
-    "К3": RoomSchedule(),
-    "Д1": RoomSchedule(),
-    "Д2": RoomSchedule(),
-    "Д3": RoomSchedule(),
-}
+# endregion
+
+
+# region Data
+
+
+class Data(ABC):
+    @abstractmethod
+    def __init__(self):
+        raise NotImplementedError
+
+    days: list = days
+    teachers_schedule_time: dict = teachers_schedule_time
+    schedule_time_shift_1: dict[int, PairTime]
+    schedule_time_shift_2: dict[int, PairTime]
+    schedule_time_shift_3: dict[int, PairTime]
+    groups_shift: dict[str, dict[str, PairTime]]
+    discipline_hours: dict[str, dict[str, int]]
+    teachers: dict[str, Teacher]
+    teachers_work_hours: dict[str, TeachersSchedule]
+    rooms: dict[str, Room]
+    rooms_availability_hours: dict[str, RoomSchedule]
+
+
+class ExampleData(Data):
+    def __init__(self):
+        self.days = days
+
+        self.teachers_schedule_time = teachers_schedule_time
+
+        self.schedule_time_shift_1 = {  # time schedule for first shift
+            1: PairTime(time(8, 0), time(9, 30), "Онлайн"),
+            2: PairTime(time(9, 40), time(11, 10), "Офлайн"),
+            3: PairTime(time(16, 40), time(17, 40), "Офлайн"),
+        }
+
+        self.schedule_time_shift_2 = {  # time schedule for second shift
+            1: PairTime(time(8, 0), time(9, 0), "Онлайн"),
+            2: PairTime(time(11, 30), time(13, 0), "Офлайн"),
+            3: PairTime(time(13, 10), time(14, 40), "Офлайн"),
+        }
+
+        self.schedule_time_shift_3 = {  # time schedule for third shift
+            1: PairTime(time(11, 50), time(12, 50), "Онлайн"),
+            2: PairTime(time(15, 0), time(16, 30), "Офлайн"),
+            3: PairTime(time(16, 40), time(18, 10), "Офлайн"),
+        }
+
+        self.groups_shift = {
+            "П9024": self.schedule_time_shift_1,
+            "П9022": self.schedule_time_shift_2,
+            "П9021": self.schedule_time_shift_3,
+        }
+
+        self.discipline_hours = {  # on current week
+            "П9024": {
+                "Литература": 2,
+                "Физика": 0,
+                "Иностранный язык": 2,
+                "Математика": 4,
+                "Физическая культура": 2,
+                "Основы безопасности жизнедеятельности": 0,
+                "Информатика": 2,
+                "География": 4,
+                "Биология": 2,
+                "Химия": 0,
+                "Русский язык": 2,
+                "Обществознание": 4,
+                "История": 2,
+                "Индивидуальный проект": 0,
+                "Право": 2,
+            },
+            "П9022": {
+                "Литература": 2,
+                "Физика": 0,
+                "Иностранный язык": 2,
+                "Математика": 4,
+                "Физическая культура": 2,
+                "Основы безопасности жизнедеятельности": 0,
+                "Информатика": 2,
+                "География": 4,
+                "Биология": 2,
+                "Химия": 0,
+                "Русский язык": 2,
+                "Обществознание": 4,
+                "История": 2,
+                "Индивидуальный проект": 0,
+                "Право": 2,
+            },
+            "П9021": {
+                "Литература": 2,
+                "Физика": 0,
+                "Иностранный язык": 2,
+                "Математика": 4,
+                "Физическая культура": 2,
+                "Основы безопасности жизнедеятельности": 0,
+                "Информатика": 2,
+                "География": 4,
+                "Биология": 2,
+                "Химия": 0,
+                "Русский язык": 2,
+                "Обществознание": 4,
+                "История": 2,
+                "Индивидуальный проект": 0,
+                "Право": 2,
+            }
+        }
+
+        self.teachers = {  # random teachers
+            "Дмитриев Д.Д.": Teacher("Дмитриев Д.Д.", {"Информатика", "Индивидуальный проект"}, {"П9024"}),
+            "Александров А.А.": Teacher("Александров А.А.", {"Математика"}, {"П9024"}),
+            "Иванов И.И.": Teacher("Иванов И.И.", {"Математика", "Физика", "Информатика", "Индивидуальный проект"},
+                                   {"П9022", "П9021"}),
+            "Петрова П.П.": Teacher("Петрова П.П.", {"Литература", "Русский язык"}, {"П9022"}),
+            "Владимирова В.П.": Teacher("Владимирова В.П.", {"Литература", "Русский язык"}, {"П9021"}),
+            "Данилова Д.Д.": Teacher("Данилова Д.Д.", {"Литература", "Русский язык"}, {"П9024"}),
+            "Сидорова С.С.": Teacher("Сидорова С.С.", {"География", "Биология", "Химия"}, {"П9022", "П9021", "П9024"}),
+            "Кузнецова К.К.": Teacher("Кузнецова К.К.", {"Обществознание", "История", "Право"}, {"П9021", "П9022", "П9024"}),
+            "Васильев В.В.": Teacher("Васильев В.В.", {"Физическая культура", "Основы безопасности жизнедеятельности"},
+                                     {"П9021", "П9022", "П9024"}),
+            "Смирнова С.С.": Teacher("Смирнова С.С.", {"Иностранный язык"}, {"П9024"}),
+            "Смирнов В.С.": Teacher("Смирнов В.С.", {"Иностранный язык"}, {"П9022", "П9021"}),
+        }
+
+        self.teachers_work_hours = {  # on current week
+            "Дмитриев Д.Д.": TeachersSchedule(
+                mon=(True, True, True, True, True, True, True),
+                thu=(True, True, True, True, True, True, True),
+                fri=(True, True, True, True, True, True, True),
+            ),
+            "Александров А.А.": TeachersSchedule(
+                mon=(True, True, True, True, True, True, True),
+                tue=(True, True, True, True, True, True, True),
+                wed=(True, True, True, True, True, True, True),
+                thu=(True, True, True, True, True, True, True),
+                fri=(True, True, True, True, True, True, True),
+            ),
+            "Иванов И.И.": TeachersSchedule(
+                mon=(True, True, True, True, True, True, True),
+                wed=(True, True, True, True, True, True, True),
+                thu=(True, True, True, True, True, True, True),
+                fri=(True, True, True, True, True, True, True),
+            ),
+            "Петрова П.П.": TeachersSchedule(
+                mon=(True, True, True, True, True, True, True),
+                tue=(True, True, True, True, True, True, True),
+                wed=(True, True, True, True, True, True, True),
+            ),
+            "Владимирова В.П.": TeachersSchedule(
+                mon=(True, True, True, True, True, True, True),
+                tue=(True, True, True, True, True, True, True),
+            ),
+            "Данилова Д.Д.": TeachersSchedule(
+                mon=(True, True, True, True, True, True, True),
+                tue=(True, True, True, True, True, True, True),
+                fri=(True, True, True, True, True, True, True),
+            ),
+            "Сидорова С.С.": TeachersSchedule(
+                mon=(True, True, True, True, True, True, True),
+                tue=(True, True, True, True, True, True, True),
+                wed=(True, True, True, True, True, True, True),
+                thu=(True, True, True, True, True, True, True),
+                fri=(True, True, True, True, True, True, True),
+            ),
+            "Кузнецова К.К.": TeachersSchedule(
+                mon=(True, True, True, True, True, True, True),
+                wed=(True, True, True, True, True, True, True),
+                thu=(True, True, True, True, True, True, True),
+                fri=(True, True, True, True, True, True, True),
+            ),
+            "Васильев В.В.": TeachersSchedule(
+                mon=(True, True, True, True, True, True, True),
+                thu=(True, True, True, True, True, True, True),
+                fri=(True, True, True, True, True, True, True),
+            ),
+            "Смирнова С.С.": TeachersSchedule(
+                wed=(True, True, True, True, True, True, True),
+                thu=(True, True, True, True, True, True, True),
+                fri=(True, True, True, True, True, True, True),
+            ),
+            "Смирнов В.С.": TeachersSchedule(
+                mon=(True, True, True, True, True, True, True),
+                fri=(True, True, True, True, True, True, True),
+            )
+        }
+
+        self.rooms = {
+            "К1": Room(),
+            "К2": Room(),
+            "К3": Room(),
+            "Д1": Room(True),
+            "Д2": Room(True),
+            "Д3": Room(True),
+        }
+
+        self.rooms_availability_hours = {
+            "К1": RoomSchedule(),
+            "К2": RoomSchedule(),
+            "К3": RoomSchedule(),
+            "Д1": RoomSchedule(),
+            "Д2": RoomSchedule(),
+            "Д3": RoomSchedule(),
+        }
+
+
+def save_data(data: Data) -> None:
+    with open("db.pickle", "wb") as f:
+        pickle.dump(data, f)
+
+
+def load_data() -> Data:
+    with open("db.pickle", "rb") as f:
+        return pickle.load(f)
+
+
+def get_data() -> Data:
+    if not os.path.exists("db.pickle"):
+        return ExampleData()
+    return load_data()
+
+# endregion

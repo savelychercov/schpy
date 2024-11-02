@@ -1,4 +1,5 @@
 import db
+import copy
 
 
 class ScheduleError(ValueError):
@@ -9,16 +10,26 @@ class ScheduleError(ValueError):
         self.hours = hours
 
 
-def show_schedule(schedule: dict[str, list[db.Pair]]):
+def print_schedule(schedule: dict[str, list[db.Pair]]) -> None:
     for group in schedule:
         print(group)
         for pair in schedule[group]:
             print(pair)
 
 
-def make_schedule(existing_pairs: list[db.Pair], discipline: str, group: str, teacher: db.Teacher) -> db.Pair:
-    shift = db.groups_shift[group]
-    teachers_schedule = db.teachers_work_hours[teacher.name]
+def print_errors(errors_list: list[ScheduleError]) -> None:
+    for error in errors_list:
+        print(f"Невозможно поставить пару для группы {error.group}, для дисциплины {error.discipline}, оставшиеся часы: {error.hours}")
+
+
+def choose_a_pair_time(
+        existing_pairs: list[db.Pair],
+        discipline: str,
+        group: str,
+        teacher: db.Teacher,
+        data: db.Data) -> db.Pair:
+    shift = data.groups_shift[group]
+    teachers_schedule = data.teachers_work_hours[teacher.name]
 
     # Ищем первое свободное время для дисциплины
     for day in db.days:
@@ -26,8 +37,7 @@ def make_schedule(existing_pairs: list[db.Pair], discipline: str, group: str, te
             if number in [pair.number for pair in existing_pairs if pair.day == day]: continue
             try:
                 teachers_schedule.choose_pair(day, pair_time)
-            except ValueError as e:
-                # print(e)
+            except ValueError:
                 continue
             # Создаем объект пары
             pair = db.Pair(
@@ -43,31 +53,31 @@ def make_schedule(existing_pairs: list[db.Pair], discipline: str, group: str, te
             )
             return pair  # Возвращаем объект пары
     raise ScheduleError(
-        f"Невозможно найти свободное время",
+        f"Невозможно найти свободное время",
         discipline=discipline,
         group=group
     )
 
 
-def make_full_schedule() -> dict:
+def distribute_pairs(data: db.Data) -> tuple[dict[str, list[db.Pair]], list[ScheduleError]]:
     full_schedule = {}  # Словарь для хранения расписания по группам
     errors = []
     remaining_hours = {}
-    for rh in db.discipline_hours.copy():
-        remaining_hours[rh] = db.discipline_hours[rh].copy()
+    for rh in data.discipline_hours.copy():
+        remaining_hours[rh] = data.discipline_hours[rh].copy()
 
-    for group in db.groups_shift.keys():
+    for group in data.groups_shift.keys():
         full_schedule[group] = []  # Инициализируем список для каждой группы
         # Итерируемся по дисциплинам
-        for discipline in remaining_hours[group]:  # M получаем недельные часы по дисцип.
+        for discipline in remaining_hours[group]:  # M получаем недельные часы по дисциплине.
             # Ищем подходящего преподавателя для дисциплины
             if remaining_hours[group][discipline] == 0:  # M
                 continue
-            for teacher in db.teachers.values():  # M у каждого препода есть группы за которые он отвечает и дисциплины
+            for teacher in data.teachers.values():  # M у каждого преподавателя есть группы за которые он отвечает и дисциплины
                 if not (discipline in teacher.disciplines and group in teacher.groups): continue
                 try:
                     while remaining_hours[group][discipline] > 0:
-                        pair = make_schedule(full_schedule[group], discipline, group, teacher)
+                        pair = choose_a_pair_time(full_schedule[group], discipline, group, teacher, data)
                         full_schedule[group].append(pair)  # Добавляем пару в расписание
                         remaining_hours[group][discipline] -= 2
                 except ScheduleError as e:
@@ -77,9 +87,9 @@ def make_full_schedule() -> dict:
     return full_schedule, errors  # Возвращаем полное расписание
 
 
-def distribute_classrooms(raw_sch: dict):
+def distribute_classrooms(raw_sch: dict, data: db.Data) -> dict[str, list[db.Pair]]:
     raw_sch = raw_sch.copy()
-    available_rooms: dict[str, db.RoomSchedule] = db.rooms_availability_hours
+    available_rooms: dict[str, db.RoomSchedule] = data.rooms_availability_hours
     for group, list_of_pairs in raw_sch.items():
         for pair in list_of_pairs:
             if pair.classroom is not None: continue
@@ -87,7 +97,6 @@ def distribute_classrooms(raw_sch: dict):
                 _available_rooms_list = [(room, sc) for room, sc in available_rooms.items() if room.startswith("Д")]
             else:
                 _available_rooms_list = [(room, sc) for room, sc in available_rooms.items() if room.startswith("К")]
-            # random.shuffle(_available_rooms_list)  # TODO: Стереть эту строку
             for room, room_schedule in _available_rooms_list:
                 if not room_schedule.schedule_for_days[pair.day][room_schedule.get_pair_number(pair.pair_time)-1]:
                     # Если пара свободна
@@ -97,10 +106,15 @@ def distribute_classrooms(raw_sch: dict):
     return raw_sch
 
 
+def make_full_schedule(data: db.Data) -> tuple[dict[str, list[db.Pair]], list[ScheduleError]]:
+    data = copy.deepcopy(data)
+    full_schedule, errors = distribute_pairs(data)
+    full_schedule = distribute_classrooms(full_schedule, data)
+    return full_schedule, errors
+
+
 if __name__ == "__main__":
-    raw_schedule = make_full_schedule()
-    raw_schedule = distribute_classrooms(raw_schedule)
-    for g, pairs in raw_schedule.items():
-        print(f"Расписание для группы {g}:")
-        for p in sorted(pairs, key=lambda pair: db.days.index(pair.day)):
-            print(p)
+    d = db.get_data()
+    full_sch, errs = make_full_schedule(d)
+    print_schedule(full_sch)
+    print_errors(errs)

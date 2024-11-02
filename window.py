@@ -6,6 +6,7 @@ import db
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from datetime import time
+db = db.get_db_copy()
 
 
 class InputDataDialog(QDialog):
@@ -272,7 +273,7 @@ class MainWindow(QMainWindow):
         self.table_widget.resizeColumnsToContents()
 
     def generate_schedule(self):
-        pairs, self.errors = schedule_maker.make_full_schedule()
+        pairs, self.errors = schedule_maker.distribute_pairs()
         pairs: dict[str, list[db.Pair]] = schedule_maker.distribute_classrooms(pairs)
         self.current_schedule = pairs
         self.table_widget.setRowCount(0)
