@@ -70,9 +70,7 @@ def choose_a_pair_time(
 def distribute_pairs(data: db.Data) -> tuple[dict[str, list[db.Pair]], list[ScheduleError]]:
     full_schedule = {}  # Словарь для хранения расписания по группам
     errors = []
-    remaining_hours = {}
-    for rh in data.discipline_hours.copy():
-        remaining_hours[rh] = data.discipline_hours[rh].copy()
+    remaining_hours = data.discipline_hours
 
     for group in data.groups_shift.keys():
         full_schedule[group] = []  # Инициализируем список для каждой группы

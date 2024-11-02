@@ -1,5 +1,5 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QAbstractItemView, QMessageBox, QLabel, QListWidget, QDialog
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QAbstractItemView, QMessageBox, QLabel, QListWidget, QDialog, QCheckBox
 from PyQt5.QtCore import Qt, QEvent
 from PyQt5.QtGui import QIcon
 import schedule_maker
@@ -23,12 +23,13 @@ class InputDataDialog(QDialog):
             "КУГ": "discipline_hours",
             "Преподаватели": "teachers",
             "Аудитории": "rooms",
-            "Расписание преподавателей": "teachers_work_hours",
-            "Расписание аудиторий": "rooms_availability_hours",
+            "Расписание\nпреподавателей": "teachers_work_hours",
+            "Расписание\nаудиторий": "rooms_availability_hours",
         }
 
         self.setWindowTitle("Редактирование данных")
         self.setGeometry(100, 100, 1200, 600)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         self.layout = QHBoxLayout(self)
 
@@ -41,11 +42,40 @@ class InputDataDialog(QDialog):
         self.data_table = QTableWidget()
         self.layout.addWidget(self.data_table)
 
+        self.button_layout = QVBoxLayout()
+
+        self.add_row_button = QPushButton("Добавить строку")
+        self.add_row_button.clicked.connect(self.add_row)
+        self.button_layout.addWidget(self.add_row_button)
+
+        self.delete_selected_rows_button = QPushButton("Удалить выделенные строки")
+        self.delete_selected_rows_button.clicked.connect(self.delete_selected_rows)
+        self.button_layout.addWidget(self.delete_selected_rows_button)
+
         self.save_button = QPushButton("Сохранить изменения")
         self.save_button.clicked.connect(self.save_changes)
-        self.layout.addWidget(self.save_button)
+        self.button_layout.addWidget(self.save_button)
+
+        self.back_button = QPushButton("Назад")
+        self.back_button.clicked.connect(self.close)
+        self.button_layout.addWidget(self.back_button)
+
+        self.button_layout.addStretch()
+        self.layout.addLayout(self.button_layout)
 
         self.current_variable = None
+
+    def delete_selected_rows(self):
+        resp = QMessageBox.question(
+            self, "Подтверждение", "Удалить выделенные строки?", QMessageBox.Yes | QMessageBox.No
+        )
+        if resp == QMessageBox.Yes:
+            selected_rows = self.data_table.selectionModel().selectedRows()
+            for row in selected_rows:
+                self.data_table.removeRow(row.row())
+
+    def add_row(self):
+        self.data_table.insertRow(self.data_table.rowCount())
 
     def display_variable_data(self, current):
         if not current:
@@ -57,10 +87,10 @@ class InputDataDialog(QDialog):
 
         self.data_table.setRowCount(0)
 
-        # Настраиваем отображение таблицы в зависимости от типа переменной
         if variable_name == "groups_shift":
-            self.data_table.setColumnCount(3)
-            self.data_table.setHorizontalHeaderLabels(["Группа", "Пара", "Время", "Тип"])
+            headers = ["Группа", "Пара", "Время", "Тип"]
+            self.data_table.setColumnCount(len(headers))
+            self.data_table.setHorizontalHeaderLabels(headers)
             row = 0
             for group, schedule in variable_data.items():
                 for pair, time_obj in schedule.items():
@@ -104,77 +134,157 @@ class InputDataDialog(QDialog):
                 self.data_table.setItem(row, 1, QTableWidgetItem("Да" if room_obj.is_online else "Нет"))
                 row += 1
 
-        elif variable_name == "teachers_work_hours" or variable_name == "rooms_availability_hours":
-            self.data_table.setColumnCount(2)
-            self.data_table.setHorizontalHeaderLabels(["Имя", "Расписание"])
-            row = 0
-            for name, schedule in variable_data.items():
-                self.data_table.insertRow(row)
-                self.data_table.setItem(row, 0, QTableWidgetItem(name))
-                self.data_table.setItem(row, 1, QTableWidgetItem(str(schedule.schedule_for_days)))
-                row += 1
+        elif variable_name in ["teachers_work_hours", "rooms_availability_hours"]:
+            self._setup_schedule_table(variable_data)
 
         self.data_table.setEditTriggers(QTableWidget.DoubleClicked)
+        self.data_table.resizeColumnsToContents()
+
+    def _setup_schedule_table(self, schedule_data):
+        days_of_week = list(data.days)
+        num_pairs = len(data.teachers_schedule_time)
+
+        # Устанавливаем столбцы: один для имени, остальные для расписания по дням
+        self.data_table.setColumnCount(1 + len(days_of_week))
+        headers = ["Имя"] + days_of_week
+        self.data_table.setHorizontalHeaderLabels(headers)
+
+        for row, (name, schedule) in enumerate(schedule_data.items()):
+            self.data_table.insertRow(row)
+            self.data_table.setItem(row, 0, QTableWidgetItem(name))
+
+            for col, day in enumerate(days_of_week, start=1):
+                day_schedule = schedule.schedule_for_days.get(day, [False] * num_pairs)
+
+                cell_widget = QWidget()
+                cell_layout = QHBoxLayout(cell_widget)
+                cell_layout.setContentsMargins(0, 0, 0, 0)
+
+                # Создаем по одному QCheckBox для каждой пары в день
+                for slot in day_schedule:
+                    check_box = QCheckBox()
+                    check_box.setChecked(slot)
+                    cell_layout.addWidget(check_box)
+
+                cell_widget.setLayout(cell_layout)
+                self.data_table.setCellWidget(row, col, cell_widget)
+
+    def _save_schedule_changes(self, schedule_data):
+        for row in range(self.data_table.rowCount()):
+            name = self.data_table.item(row, 0).text()
+
+            updated_schedule = {}
+            for col in range(1, self.data_table.columnCount()):
+                day = self.data_table.horizontalHeaderItem(col).text()
+
+                cell_widget = self.data_table.cellWidget(row, col)
+                day_schedule = [check_box.isChecked() for check_box in cell_widget.findChildren(QCheckBox)]
+
+                updated_schedule[day] = day_schedule
+
+            schedule_data[name].schedule_for_days = updated_schedule
 
     def save_changes(self):
         if self.current_variable is None:
             return
 
-        variable_data = getattr(data, self.current_variable)
+        invalid_data = []
+        table_name = self.current_variable
+        ru_table_name = next((key for key, value in self.vars_to_redact.items() if value == table_name), None)
 
-        # Пересоздаем объекты с измененными данными
-        if self.current_variable == "groups_shift":
-            for row in range(self.data_table.rowCount()):
-                group = self.data_table.item(row, 0).text()
-                pair = int(self.data_table.item(row, 1).text())
-                time_str = self.data_table.item(row, 2).text()
-                # Разбор строки времени и пересоздание PairTime объекта
-                start_time = time.fromisoformat(time_str.split(" - ")[0])
-                end_time = time.fromisoformat(time_str.split(" - ")[1])
-                pair_type = self.data_table.item(row, 3).text()
-                variable_data[group][pair] = db.PairTime(start_time, end_time, pair_type)
+        try:
+            variable_data = getattr(data, table_name)
 
-        elif self.current_variable == "discipline_hours":
-            for row in range(self.data_table.rowCount()):
-                group = self.data_table.item(row, 0).text()
-                discipline = self.data_table.item(row, 1).text()
-                hours = int(self.data_table.item(row, 2).text())
-                variable_data[group][discipline] = hours
+            if table_name == "groups_shift":
+                for row in range(self.data_table.rowCount()):
+                    try:
+                        group = self.data_table.item(row, 0).text()
+                        pair = int(self.data_table.item(row, 1).text())
+                        time_str = self.data_table.item(row, 2).text()
+                        start_time = time.fromisoformat(time_str.split(" - ")[0])
+                        end_time = time.fromisoformat(time_str.split(" - ")[1])
+                        pair_type = self.data_table.item(row, 3).text()
+                        variable_data[group][pair] = db.PairTime(start_time, end_time, pair_type)
+                    except (ValueError, AttributeError, IndexError):
+                        row_data = [self.data_table.item(row, col).text() for col in
+                                    range(self.data_table.columnCount())]
+                        invalid_data.append(row_data)
 
-        elif self.current_variable == "teachers":
-            for row in range(self.data_table.rowCount()):
-                name = self.data_table.item(row, 0).text()
-                disciplines = set(self.data_table.item(row, 1).text().split(", "))
-                groups = set(self.data_table.item(row, 2).text().split(", "))
-                variable_data[name] = db.Teacher(name, disciplines, groups)
+            elif table_name == "discipline_hours":
+                for row in range(self.data_table.rowCount()):
+                    try:
+                        group = self.data_table.item(row, 0).text()
+                        discipline = self.data_table.item(row, 1).text()
+                        hours = int(self.data_table.item(row, 2).text())
+                        variable_data[group][discipline] = hours
+                    except (ValueError, AttributeError):
+                        row_data = [self.data_table.item(row, col).text() for col in
+                                    range(self.data_table.columnCount())]
+                        invalid_data.append(row_data)
 
-        elif self.current_variable == "rooms":
-            for row in range(self.data_table.rowCount()):
-                room = self.data_table.item(row, 0).text()
-                is_online = self.data_table.item(row, 1).text() == "Да"
-                variable_data[room] = db.Room(is_online)
+            elif table_name == "teachers":
+                for row in range(self.data_table.rowCount()):
+                    try:
+                        name = self.data_table.item(row, 0).text()
+                        disciplines = set(self.data_table.item(row, 1).text().split(", "))
+                        groups = set(self.data_table.item(row, 2).text().split(", "))
+                        variable_data[name] = db.Teacher(name, disciplines, groups)
+                    except AttributeError:
+                        row_data = [self.data_table.item(row, col).text() for col in
+                                    range(self.data_table.columnCount())]
+                        invalid_data.append(row_data)
 
-        elif self.current_variable == "teachers_work_hours" or self.current_variable == "rooms_availability_hours":
-            for row in range(self.data_table.rowCount()):
-                name = self.data_table.item(row, 0).text()
-                schedule_data = eval(self.data_table.item(row, 1).text())
-                variable_data[name].schedule_for_days = schedule_data
+            elif table_name == "rooms":
+                for row in range(self.data_table.rowCount()):
+                    try:
+                        room = self.data_table.item(row, 0).text()
+                        is_online = self.data_table.item(row, 1).text() == "Да"
+                        variable_data[room] = db.Room(is_online)
+                    except AttributeError:
+                        row_data = [self.data_table.item(row, col).text() for col in
+                                    range(self.data_table.columnCount())]
+                        invalid_data.append(row_data)
 
-        setattr(data, self.current_variable, variable_data)
+            elif table_name in ["teachers_work_hours", "rooms_availability_hours"]:
+                try:
+                    self._save_schedule_changes(variable_data)
+                except Exception as e:
+                    QMessageBox.warning(self, "Ошибка", f"Ошибка при сохранении расписания: {str(e)}")
+                    return
+
+            setattr(data, table_name, variable_data)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Критическая ошибка", f"Не удалось сохранить изменения: {str(e)}")
+            return
+
+        if invalid_data:
+            # Подготовка информации о первых трех ошибках
+            error_message = f"Обнаружены ошибки в таблице '{ru_table_name}'. Проверьте следующие строки:\n"
+            for i, row_data in enumerate(invalid_data[:3]):
+                error_message += f"\nСтрока {i + 1}: " + ", ".join(row_data)
+
+            QMessageBox.warning(self, "Ошибка данных", error_message)
+        else:
+            QMessageBox.information(self, "Сохранение", f"Данные в таблице '{ru_table_name}' успешно сохранены.")
 
 
-class ErrorDialog(QDialog):  # TODO: Показать в окошке список оставшихся часов
-    def __init__(self, errors: list):
+class ErrorDialog(QDialog):
+    def __init__(self, errors: list, remaining_data: db.Data):
         super().__init__()
         self.setWindowTitle("Ошибки при генерации расписания")
-        self.setGeometry(100, 100, 600, 500)
+        self.setGeometry(100, 100, 800, 500)  # Увеличиваем ширину окна для списка оставшихся часов
         self.setWindowFlags(self.windowFlags() | Qt.WindowContextHelpButtonHint)  # Добавляем кнопку справки
 
         # Загрузка стиля
         with open("ErrorDialog.css", "r") as f:
             self.setStyleSheet(f.read())
 
-        self.layout = QVBoxLayout(self)
+        # Основной макет с горизонтальным расположением для левой и правой частей
+        main_layout = QHBoxLayout(self)
+
+        # Левая часть (список ошибок и информация о текущей ошибке)
+        left_layout = QVBoxLayout()
         self.errors = errors
 
         # Список ошибок
@@ -186,15 +296,39 @@ class ErrorDialog(QDialog):  # TODO: Показать в окошке списо
 
         # Заголовок и описание ошибок
         self.help_text = QLabel("Невозможно поставить пары для данных дисциплин и групп:")
-        self.layout.addWidget(self.help_text)
-        self.layout.addWidget(self.error_list_widget)
+        left_layout.addWidget(self.help_text)
+        left_layout.addWidget(self.error_list_widget)
 
         self.group_label = QLabel("| Группа: ")
         self.discipline_label = QLabel("| Дисциплина: ")
         self.hours_label = QLabel("| Оставшиеся часы: ")
-        self.layout.addWidget(self.group_label)
-        self.layout.addWidget(self.discipline_label)
-        self.layout.addWidget(self.hours_label)
+        left_layout.addWidget(self.group_label)
+        left_layout.addWidget(self.discipline_label)
+        left_layout.addWidget(self.hours_label)
+
+        main_layout.addLayout(left_layout)
+
+        # Правая часть (список дисциплин с оставшимися часами)
+        right_layout = QVBoxLayout()
+        self.remaining_hours_list_widget = QListWidget()
+
+        # Заголовок для оставшихся часов
+        remaining_hours_label = QLabel("Дисциплины с оставшимися часами:")
+        right_layout.addWidget(remaining_hours_label)
+        right_layout.addWidget(self.remaining_hours_list_widget)
+
+        # Добавление данных об оставшихся часах в виджет
+        for group, disciplines in remaining_data.discipline_hours.items():
+            for discipline, hours in disciplines.items():
+                if hours > 0:
+                    self.remaining_hours_list_widget.addItem(f"Группа: {group},\nДисциплина: {discipline},\nОсталось часов: {hours}")
+
+        self.back_button = QPushButton("Назад")
+        self.back_button.clicked.connect(self.close)
+        right_layout.addWidget(self.back_button)
+
+        main_layout.addLayout(right_layout)
+
 
     def display_error_info(self, current):
         def pair_text(count):
@@ -220,7 +354,8 @@ class ErrorDialog(QDialog):  # TODO: Показать в окошке списо
             "Список вверху содержит информацию о группе и дисциплине, для которой не удалось "
             "поставить пары. Выберите элемент из списка, чтобы увидеть подробные данные "
             "о выбранной ошибке ниже.\n\n"
-            "Эта информация поможет вам разобраться с проблемами при создании расписания."
+            "С правой стороны отображается список дисциплин с оставшимися часами, "
+            "которые ещё не были распределены в расписании."
         )
         QMessageBox.information(self, "Справка", help_message)
 
@@ -228,6 +363,7 @@ class ErrorDialog(QDialog):  # TODO: Показать в окошке списо
 class MainWindow(QMainWindow):
     def __init__(self):
         self.current_schedule: dict[str, list[db.Pair]] = None
+        self.remaining_data = None
         self.errors = []
 
         super().__init__()
@@ -280,6 +416,7 @@ class MainWindow(QMainWindow):
         sch = schedule_maker.make_full_schedule(data)
         self.current_schedule = sch
         self.errors = sch.errors
+        self.remaining_data = sch.remaining_data
         headers = ["Группа", "День", "Время", "Форма", "Предмет", "Педагог", "Каб."]
         self.table_widget.setRowCount(0)
         self.table_widget.setColumnCount(len(headers))
@@ -303,7 +440,7 @@ class MainWindow(QMainWindow):
 
     def show_errors(self):
         if self.errors:
-            error_dialog = ErrorDialog(self.errors)
+            error_dialog = ErrorDialog(self.errors, self.remaining_data)
             error_dialog.exec_()
 
     def export_schedule(self):
@@ -311,13 +448,13 @@ class MainWindow(QMainWindow):
             row_count = self.table_widget.rowCount()
             column_count = self.table_widget.columnCount()
 
-            data = []
+            exp_data = []
             for row in range(row_count):
                 row_data = []
                 for column in range(column_count):
                     item = self.table_widget.item(row, column)
                     row_data.append(item.text() if item else "")
-                data.append(row_data)
+                exp_data.append(row_data)
 
             headers = [self.table_widget.horizontalHeaderItem(i).text() for i in range(column_count)]
 
@@ -327,7 +464,7 @@ class MainWindow(QMainWindow):
             for col_num, header in enumerate(headers, 1):
                 sheet.cell(row=1, column=col_num, value=header)
 
-            for row_num, row_data in enumerate(data, 2):
+            for row_num, row_data in enumerate(exp_data, 2):
                 for col_num, value in enumerate(row_data, 1):
                     sheet.cell(row=row_num, column=col_num, value=value)
 
