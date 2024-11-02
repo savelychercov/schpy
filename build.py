@@ -3,6 +3,7 @@ import PyInstaller.__main__
 
 title = "SchPy"
 start_file = "window.py"
+icon_name = "icon.ico"
 
 dirs = [
 
@@ -22,7 +23,7 @@ command = [
     '--noconfirm',
     '--onefile',
     '--windowed',
-    '--icon=icon.png',
+    f'--icon={icon_name}',
     f'--name={title}',
     '--clean',
     '--distpath=build'

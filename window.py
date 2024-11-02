@@ -372,7 +372,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Составление расписания")
-        self.setWindowIcon(QIcon("icon.png"))
+        self.setWindowIcon(QIcon("icon.ico"))
         self.setGeometry(100, 100, 1400, 800)
 
         self.central_widget = QWidget()
