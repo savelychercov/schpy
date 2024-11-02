@@ -1,5 +1,6 @@
 import db
 import copy
+from dataclasses import dataclass
 
 
 class ScheduleError(ValueError):
@@ -8,6 +9,13 @@ class ScheduleError(ValueError):
         self.discipline = discipline
         self.group = group
         self.hours = hours
+
+
+@dataclass
+class Schedule:
+    pairs: dict[str, list[db.Pair]]
+    errors: list[ScheduleError]
+    remaining_data: db.Data
 
 
 def print_schedule(schedule: dict[str, list[db.Pair]]) -> None:
@@ -106,11 +114,13 @@ def distribute_classrooms(raw_sch: dict, data: db.Data) -> dict[str, list[db.Pai
     return raw_sch
 
 
-def make_full_schedule(data: db.Data) -> tuple[dict[str, list[db.Pair]], list[ScheduleError]]:
+def make_full_schedule(data: db.Data) -> Schedule:
     data = copy.deepcopy(data)
     full_schedule, errors = distribute_pairs(data)
     full_schedule = distribute_classrooms(full_schedule, data)
-    return full_schedule, errors
+    for group in full_schedule:
+        full_schedule[group] = sorted(full_schedule[group], key=lambda p: db.days.index(p.day))
+    return Schedule(pairs=full_schedule, errors=errors, remaining_data=data)
 
 
 if __name__ == "__main__":

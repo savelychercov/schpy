@@ -1,12 +1,14 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QAbstractItemView, QMessageBox, QLabel, QListWidget, QDialog
 from PyQt5.QtCore import Qt, QEvent
+from PyQt5.QtGui import QIcon
 import schedule_maker
 import db
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from datetime import time
-db = db.get_db_copy()
+
+data: db.Data
 
 
 class InputDataDialog(QDialog):
@@ -51,7 +53,7 @@ class InputDataDialog(QDialog):
 
         variable_name = self.vars_to_redact[current.text()]
         self.current_variable = variable_name
-        variable_data = getattr(db, variable_name)
+        variable_data = getattr(data, variable_name)
 
         self.data_table.setRowCount(0)
 
@@ -118,7 +120,7 @@ class InputDataDialog(QDialog):
         if self.current_variable is None:
             return
 
-        variable_data = getattr(db, self.current_variable)
+        variable_data = getattr(data, self.current_variable)
 
         # Пересоздаем объекты с измененными данными
         if self.current_variable == "groups_shift":
@@ -158,10 +160,10 @@ class InputDataDialog(QDialog):
                 schedule_data = eval(self.data_table.item(row, 1).text())
                 variable_data[name].schedule_for_days = schedule_data
 
-        setattr(db, self.current_variable, variable_data)
+        setattr(data, self.current_variable, variable_data)
 
 
-class ErrorDialog(QDialog):
+class ErrorDialog(QDialog):  # TODO: Показать в окошке список оставшихся часов
     def __init__(self, errors: list):
         super().__init__()
         self.setWindowTitle("Ошибки при генерации расписания")
@@ -230,7 +232,8 @@ class MainWindow(QMainWindow):
 
         super().__init__()
 
-        self.setWindowTitle("Простое окно с таблицей")
+        self.setWindowTitle("Составление расписания")
+        self.setWindowIcon(QIcon("icon.png"))
         self.setGeometry(100, 100, 1400, 800)
 
         self.central_widget = QWidget()
@@ -238,7 +241,8 @@ class MainWindow(QMainWindow):
 
         self.layout = QHBoxLayout(self.central_widget)
 
-        self.table_widget = QTableWidget(1, 6)
+        self.table_widget = QTableWidget(1, 1)
+        self.table_widget.setItem(0, 0, QTableWidgetItem("Здесь будет созданное расписание"))
         self.table_widget.setEditTriggers(QAbstractItemView.NoEditTriggers)
 
         self.button_layout = QVBoxLayout()
@@ -273,17 +277,18 @@ class MainWindow(QMainWindow):
         self.table_widget.resizeColumnsToContents()
 
     def generate_schedule(self):
-        pairs, self.errors = schedule_maker.distribute_pairs()
-        pairs: dict[str, list[db.Pair]] = schedule_maker.distribute_classrooms(pairs)
-        self.current_schedule = pairs
+        sch = schedule_maker.make_full_schedule(data)
+        self.current_schedule = sch
+        self.errors = sch.errors
+        headers = ["Группа", "День", "Время", "Форма", "Предмет", "Педагог", "Каб."]
         self.table_widget.setRowCount(0)
-        self.table_widget.setHorizontalHeaderLabels(["Группа", "День", "Время", "Предмет", "Педагог", "Каб."])
+        self.table_widget.setColumnCount(len(headers))
+        self.table_widget.setHorizontalHeaderLabels(headers)
 
         rows: list[str] = []
-        for group, pairs in pairs.items():
-            pairs = sorted(pairs, key=lambda p: db.days.index(p.day))
+        for group, pairs in sch.pairs.items():
             for pair in pairs:
-                rows.append([group, pair.day, pair.pair_time.get_str(), pair.discipline, pair.teacher, pair.classroom])
+                rows.append([group, pair.day, pair.pair_time.get_str(), pair.pair_type, pair.discipline, pair.teacher, pair.classroom])
 
         for row in rows:
             current_row = self.table_widget.rowCount()
@@ -353,13 +358,17 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Ошибка", str(e))
             raise e
 
-    def input_data(self):
+    @staticmethod
+    def input_data():
         input_dialog = InputDataDialog()
         input_dialog.exec_()
 
 
 if __name__ == "__main__":
+    data = db.get_data()
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
-    sys.exit(app.exec_())
+    ex_code = app.exec_()
+    db.save_data(data)
+    sys.exit(ex_code)
