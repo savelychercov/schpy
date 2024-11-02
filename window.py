@@ -1,5 +1,6 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QAbstractItemView, QMessageBox, QLabel, QListWidget, QDialog, QCheckBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, \
+    QHBoxLayout, QWidget, QAbstractItemView, QMessageBox, QLabel, QListWidget, QDialog, QCheckBox
 from PyQt5.QtCore import Qt, QEvent
 from PyQt5.QtGui import QIcon
 import schedule_maker
@@ -290,7 +291,7 @@ class ErrorDialog(QDialog):
         # Список ошибок
         self.error_list_widget = QListWidget()
         self.error_list_widget.addItems(
-            [f"{i+1} / Группа: {error.group}, Дисциплина: {error.discipline}" for i, error in enumerate(errors)]
+            [f"{i + 1} / Группа: {error.group}, Дисциплина: {error.discipline}" for i, error in enumerate(errors)]
         )
         self.error_list_widget.currentItemChanged.connect(self.display_error_info)
 
@@ -321,7 +322,8 @@ class ErrorDialog(QDialog):
         for group, disciplines in remaining_data.discipline_hours.items():
             for discipline, hours in disciplines.items():
                 if hours > 0:
-                    self.remaining_hours_list_widget.addItem(f"Группа: {group},\nДисциплина: {discipline},\nОсталось часов: {hours}")
+                    self.remaining_hours_list_widget.addItem(
+                        f"Группа: {group},\nДисциплина: {discipline},\nОсталось часов: {hours}")
 
         self.back_button = QPushButton("Назад")
         self.back_button.clicked.connect(self.close)
@@ -329,17 +331,18 @@ class ErrorDialog(QDialog):
 
         main_layout.addLayout(right_layout)
 
-
     def display_error_info(self, current):
         def pair_text(count):
             if count % 10 == 1: return "пара"
             if count % 10 in [2, 3, 4]: return "пары"
             return "пар"
+
         if current:
             current_error = self.errors[int(current.text().split("/")[0].strip()) - 1]
             self.group_label.setText(f"| Группа: {current_error.group}")
             self.discipline_label.setText(f"| Дисциплина: {current_error.discipline}")
-            self.hours_label.setText(f"| Оставшиеся часы: {current_error.hours} (= {current_error.hours // 2} {pair_text(current_error.hours // 2)})")
+            self.hours_label.setText(
+                f"| Оставшиеся часы: {current_error.hours} (= {current_error.hours // 2} {pair_text(current_error.hours // 2)})")
 
     def event(self, event):
         if event.type() == QEvent.Type(124):
@@ -425,7 +428,8 @@ class MainWindow(QMainWindow):
         rows: list[str] = []
         for group, pairs in sch.pairs.items():
             for pair in pairs:
-                rows.append([group, pair.day, pair.pair_time.get_str(), pair.pair_type, pair.discipline, pair.teacher, pair.classroom])
+                rows.append([group, pair.day, pair.pair_time.get_str(), pair.pair_type, pair.discipline, pair.teacher,
+                             pair.classroom])
 
         for row in rows:
             current_row = self.table_widget.rowCount()
@@ -434,7 +438,7 @@ class MainWindow(QMainWindow):
                 self.table_widget.setItem(current_row, column, QTableWidgetItem(row[column]))
 
         self.resize_columns()
-        
+
         self.error_button.setText(f"Ошибки: {len(self.errors)}")
         self.error_button.setEnabled(len(self.errors) > 0)
 
@@ -500,6 +504,17 @@ class MainWindow(QMainWindow):
         input_dialog = InputDataDialog()
         input_dialog.exec_()
 
+
+def global_exception_handler(exctype, value, traceback):
+    print("Произошла необработанная ошибка:", value)
+    with open("error_log.txt", "a") as f:
+        f.write(f"Произошла не обработанная ошибка: {value}\n")
+    db.save_data(data)
+    sys.__excepthook__(exctype, value, traceback)
+    sys.exit(1)
+
+
+sys.excepthook = global_exception_handler
 
 if __name__ == "__main__":
     data = db.get_data()
