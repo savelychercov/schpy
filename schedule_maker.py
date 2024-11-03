@@ -122,7 +122,7 @@ def make_full_schedule(data: db.Data) -> Schedule:
 
 
 if __name__ == "__main__":
-    d = db.get_data()
+    d = db.load_data()
     full_sch, errs = make_full_schedule(d)
     print_schedule(full_sch)
     print_errors(errs)

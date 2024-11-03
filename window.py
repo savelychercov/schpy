@@ -8,6 +8,9 @@ import db
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from datetime import time
+import os
+import traceback
+import build
 
 data: db.Data
 
@@ -16,7 +19,7 @@ class InputDataDialog(QDialog):
     def __init__(self):
         super().__init__()
 
-        with open("InputDataDialog.css", "r") as f:
+        with open(db.resource_path("InputDataDialog.css"), "r") as f:
             self.setStyleSheet(f.read())
 
         self.vars_to_redact = {
@@ -28,7 +31,7 @@ class InputDataDialog(QDialog):
             "Расписание\nаудиторий": "rooms_availability_hours",
         }
 
-        self.setWindowTitle("Редактирование данных")
+        self.setWindowTitle("Ввод данных")
         self.setGeometry(100, 100, 1200, 600)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
@@ -57,6 +60,14 @@ class InputDataDialog(QDialog):
         self.save_button.clicked.connect(self.save_changes)
         self.button_layout.addWidget(self.save_button)
 
+        self.clear_data_button = QPushButton("Очистить все данные")
+        self.clear_data_button.clicked.connect(self.clear_data)
+        self.button_layout.addWidget(self.clear_data_button)
+
+        self.load_test_data_button = QPushButton("Загрузить тестовые данные")
+        self.load_test_data_button.clicked.connect(self.load_test_data)
+        self.button_layout.addWidget(self.load_test_data_button)
+
         self.back_button = QPushButton("Назад")
         self.back_button.clicked.connect(self.close)
         self.button_layout.addWidget(self.back_button)
@@ -65,6 +76,24 @@ class InputDataDialog(QDialog):
         self.layout.addLayout(self.button_layout)
 
         self.current_variable = None
+
+    def load_test_data(self):
+        global data
+        resp = QMessageBox.question(
+            self, "Подтверждение", "Вы уверены, что хотите загрузить тестовые данные? Это действие нельзя отменить", QMessageBox.Yes | QMessageBox.No
+        )
+        if resp == QMessageBox.Yes:
+            data = db.ExampleData()
+            self.display_variable_data(self.data_table.currentItem())
+
+    def clear_data(self):
+        global data
+        resp = QMessageBox.question(
+            self, "Подтверждение", "Вы уверены, что хотите очистить все данные?\nЭто действие нельзя отменить", QMessageBox.Yes | QMessageBox.No
+        )
+        if resp == QMessageBox.Yes:
+            data = db.EmptyData()
+            self.display_variable_data(self.data_table.currentItem())
 
     def delete_selected_rows(self):
         resp = QMessageBox.question(
@@ -269,6 +298,26 @@ class InputDataDialog(QDialog):
         else:
             QMessageBox.information(self, "Сохранение", f"Данные в таблице '{ru_table_name}' успешно сохранены.")
 
+    def event(self, event):
+        if event.type() == QEvent.Type(124):
+            self.show_help()
+            return True
+        return super().event(event)
+
+    def show_help(self):
+        # Отображение справки
+        help_message = (
+            "Справка по использованию программы:\n\n"
+            "В этом окне можно ввести данные для расписания,\nкоторые будут использоваться при его генерации."
+            "\n\n"
+            "В левой части окна отображается список таблиц, в которых можно ввести данные.\n"
+            "Выберите таблицу, в которую хотите ввести данные и заполните ее.\n\n"
+            "В середине окна отображается таблица с данными.\n"
+            "Для сохранения изменений в текущей таблице нажмите кнопку 'Сохранить'.\n\n"
+            "Для выхода нажмите кнопку 'Назад' (данные не сохранятся если не была нажата кнопка 'Сохранить')."
+        )
+        QMessageBox.information(self, "Справка", help_message)
+
 
 class ErrorDialog(QDialog):
     def __init__(self, errors: list, remaining_data: db.Data):
@@ -278,7 +327,7 @@ class ErrorDialog(QDialog):
         self.setWindowFlags(self.windowFlags() | Qt.WindowContextHelpButtonHint)  # Добавляем кнопку справки
 
         # Загрузка стиля
-        with open("ErrorDialog.css", "r") as f:
+        with open(db.resource_path("ErrorDialog.css"), "r") as f:
             self.setStyleSheet(f.read())
 
         # Основной макет с горизонтальным расположением для левой и правой частей
@@ -365,9 +414,12 @@ class ErrorDialog(QDialog):
 
 class MainWindow(QMainWindow):
     def __init__(self):
+        global data
         self.current_schedule: dict[str, list[db.Pair]] = None
         self.remaining_data = None
         self.errors = []
+        self.temp_excel_file = "ExportSchedule.xlsx"
+        self.empty_table_message = "Здесь отобразится сгенерированное расписание"
 
         super().__init__()
 
@@ -381,7 +433,8 @@ class MainWindow(QMainWindow):
         self.layout = QHBoxLayout(self.central_widget)
 
         self.table_widget = QTableWidget(1, 1)
-        self.table_widget.setItem(0, 0, QTableWidgetItem("Здесь будет созданное расписание"))
+        self.table_widget.setHorizontalHeaderLabels(["Расписание"])
+        self.table_widget.setItem(0, 0, QTableWidgetItem(self.empty_table_message))
         self.table_widget.setEditTriggers(QAbstractItemView.NoEditTriggers)
 
         self.button_layout = QVBoxLayout()
@@ -408,9 +461,21 @@ class MainWindow(QMainWindow):
 
         self.button_layout.addStretch()
 
-        with open("MainWindow.css", "r") as f:
+        with open(db.resource_path("MainWindow.css"), "r") as f:
             self.setStyleSheet(f.read())
         self.resize_columns()
+
+        if data is None:
+            resp = QMessageBox.warning(
+                self,
+                "Информация",
+                "Данные не найдены. Загрузите тестовые или заполните их в окне 'Ввод данных'\nЗагрузить тестовый набор?",
+                QMessageBox.Ok | QMessageBox.Cancel)
+
+            if resp == QMessageBox.Ok:
+                data = db.ExampleData()
+            else:
+                data = db.EmptyData()
 
     def resize_columns(self):
         self.table_widget.resizeColumnsToContents()
@@ -452,6 +517,10 @@ class MainWindow(QMainWindow):
             row_count = self.table_widget.rowCount()
             column_count = self.table_widget.columnCount()
 
+            if row_count == 1 and column_count == 1:
+                if self.empty_table_message == self.table_widget.item(0, 0).text():
+                    raise AttributeError
+
             exp_data = []
             for row in range(row_count):
                 row_data = []
@@ -482,7 +551,7 @@ class MainWindow(QMainWindow):
                 adjusted_width = (max_length + 2)
                 sheet.column_dimensions[column_letter].width = adjusted_width
 
-            workbook.save("расписание.xlsx")
+            workbook.save(self.temp_excel_file)
             resp = QMessageBox.information(
                 self,
                 "Успех",
@@ -492,7 +561,7 @@ class MainWindow(QMainWindow):
 
             if resp == QMessageBox.Ok:
                 import os
-                os.startfile("расписание.xlsx")
+                os.startfile(self.temp_excel_file)
         except AttributeError:
             QMessageBox.warning(self, "Ошибка", "Сгенерируйте расписание перед выгрузкой")
         except Exception as e:
@@ -505,22 +574,33 @@ class MainWindow(QMainWindow):
         input_dialog.exec_()
 
 
-def global_exception_handler(exctype, value, traceback):
+def global_exception_handler(exctype, value, tb):
     print("Произошла необработанная ошибка:", value)
-    with open("error_log.txt", "a") as f:
-        f.write(f"Произошла не обработанная ошибка: {value}\n")
+    with open("error_log.txt", "a", encoding="utf-8") as f:
+        f.write(f"Произошла не обработанная ошибка: {value}\n\n")
+        f.write(traceback.format_exc()+"\n\n")
+        f.write(f"Файл не найден\n{os.listdir('.')}\n\n")
     db.save_data(data)
     sys.__excepthook__(exctype, value, traceback)
+    if not build.no_console:
+        input(f"Программа завершена с ошибкой {value}\n\n{traceback.format_exc()}\n\n Нажмите Enter для выхода")
     sys.exit(1)
 
 
 sys.excepthook = global_exception_handler
 
 if __name__ == "__main__":
-    data = db.get_data()
+    if db.check_exists_data():
+        data = db.load_data()
+        print(f"Запуск программы (№{data.counter})")
+    else:
+        data = None
+        print("Запуск программы в первый раз")
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
     ex_code = app.exec_()
     db.save_data(data)
+    if not build.no_console:
+        input("Программа завершена. Нажмите Enter для выхода")
     sys.exit(ex_code)

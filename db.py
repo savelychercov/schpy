@@ -2,6 +2,8 @@ from datetime import time, timedelta
 import pickle
 import os
 from abc import ABC, abstractmethod
+import sys
+from pathlib import Path
 
 # region Classes
 
@@ -160,6 +162,9 @@ class Room:
 
 # region Constants
 
+db_file = "db.pickle"
+db_path_name = "SchPyPickleData"
+
 days = ("Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье")
 
 # CONST
@@ -183,6 +188,7 @@ class Data(ABC):
     def __init__(self):
         raise NotImplementedError
 
+    counter: int
     days: list = days
     teachers_schedule_time: dict = teachers_schedule_time
     schedule_time_shift_1: dict[int, PairTime]
@@ -196,8 +202,26 @@ class Data(ABC):
     rooms_availability_hours: dict[str, RoomSchedule]
 
 
+class EmptyData(Data):
+    def __init__(self):
+        self.counter = 1
+        self.days = days
+        self.teachers_schedule_time = teachers_schedule_time
+        self.schedule_time_shift_1 = {}
+        self.schedule_time_shift_2 = {}
+        self.schedule_time_shift_3 = {}
+        self.groups_shift = {}
+        self.discipline_hours = {}
+        self.teachers = {}
+        self.teachers_work_hours = {}
+        self.rooms = {}
+        self.rooms_availability_hours = {}
+
+
 class ExampleData(Data):
     def __init__(self):
+        self.counter = 1
+
         self.days = days
 
         self.teachers_schedule_time = teachers_schedule_time
@@ -377,19 +401,37 @@ class ExampleData(Data):
         }
 
 
-def save_data(data: Data) -> None:
-    with open("db.pickle", "wb") as f:
+def save_data(data) -> None:
+    db_path = get_data_file_path()
+    print(f"Сохранение данных в файл {db_path}")
+    data.counter += 1
+    with open(db_path, "wb") as f:
         pickle.dump(data, f)
 
 
 def load_data() -> Data:
-    with open("db.pickle", "rb") as f:
+    db_path = get_data_file_path()
+    print(f"Загрузка данных из файла {db_path}")
+    with open(db_path, "rb") as f:
         return pickle.load(f)
 
 
-def get_data() -> Data:
-    if not os.path.exists("db.pickle"):
-        return ExampleData()
-    return load_data()
+def check_exists_data() -> bool:
+    db_path = get_data_file_path()
+    return os.path.exists(db_path)
+
+
+def resource_path(relative_path):
+    base_path = getattr(
+        sys,
+        '_MEIPASS',
+        os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
+
+
+def get_data_file_path():
+    base_path = Path(os.path.expanduser("~")) / db_path_name
+    base_path.mkdir(parents=True, exist_ok=True)
+    return base_path / db_file
 
 # endregion

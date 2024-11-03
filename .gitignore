@@ -9,6 +9,8 @@ __pycache__/
 db.pickle
 *.pickle
 
+error_log.txt
+
 # C extensions
 *.so
 
