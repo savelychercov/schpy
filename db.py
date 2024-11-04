@@ -113,6 +113,15 @@ class TeachersSchedule:  # teachers_schedule: day, pairs
             raise ValueError(f"Время '{pair_time}' занято или недоступно")
         self.take_pair(day, pair_number)
 
+    def __repr__(self):
+        str_list = []
+        for day in self.schedule_for_days:
+            s = f"{day[:2]}:"
+            for b in self.schedule_for_days[day]:
+                s += "X" if b else "O"
+            str_list.append(s)
+        return "["+", ".join(str_list)+"]"
+
 
 class RoomSchedule:
     """
@@ -162,10 +171,16 @@ class Room:
 
 # region Constants
 
+
+offline_str = "Офлайн"
+online_str = "Онлайн"
+
+
 db_file = "db.pickle"
 db_path_name = "SchPyPickleData"
 
 days = ("Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье")
+workweek_days = ("Понедельник", "Вторник", "Среда", "Четверг", "Пятница")
 
 # CONST
 teachers_schedule_time = {
@@ -194,7 +209,7 @@ class Data(ABC):
     schedule_time_shift_1: dict[int, PairTime]
     schedule_time_shift_2: dict[int, PairTime]
     schedule_time_shift_3: dict[int, PairTime]
-    groups_shift: dict[str, dict[str, PairTime]]
+    groups_shift: dict[str, dict[int, PairTime]]
     discipline_hours: dict[str, dict[str, int]]
     teachers: dict[str, Teacher]
     teachers_work_hours: dict[str, TeachersSchedule]
@@ -227,21 +242,21 @@ class ExampleData(Data):
         self.teachers_schedule_time = teachers_schedule_time
 
         self.schedule_time_shift_1 = {  # time schedule for first shift
-            1: PairTime(time(8, 0), time(9, 30), "Онлайн"),
-            2: PairTime(time(9, 40), time(11, 10), "Офлайн"),
-            3: PairTime(time(16, 40), time(17, 40), "Офлайн"),
+            1: PairTime(time(8, 0), time(9, 30), offline_str),
+            2: PairTime(time(9, 40), time(11, 10), offline_str),
+            3: PairTime(time(16, 40), time(17, 40), online_str),
         }
 
         self.schedule_time_shift_2 = {  # time schedule for second shift
-            1: PairTime(time(8, 0), time(9, 0), "Онлайн"),
-            2: PairTime(time(11, 30), time(13, 0), "Офлайн"),
-            3: PairTime(time(13, 10), time(14, 40), "Офлайн"),
+            1: PairTime(time(8, 0), time(9, 0), online_str),
+            2: PairTime(time(11, 30), time(13, 0), offline_str),
+            3: PairTime(time(13, 10), time(14, 40), offline_str),
         }
 
         self.schedule_time_shift_3 = {  # time schedule for third shift
-            1: PairTime(time(11, 50), time(12, 50), "Онлайн"),
-            2: PairTime(time(15, 0), time(16, 30), "Офлайн"),
-            3: PairTime(time(16, 40), time(18, 10), "Офлайн"),
+            1: PairTime(time(11, 50), time(12, 50), online_str),
+            2: PairTime(time(15, 0), time(16, 30), offline_str),
+            3: PairTime(time(16, 40), time(18, 10), offline_str),
         }
 
         self.groups_shift = {
