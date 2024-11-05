@@ -166,7 +166,7 @@ if __name__ == "__main__":
     best_schedule_obj = None
     best_rating = 0
 
-    count_iterations = 15000
+    count_iterations = int(input("Введите количество итераций: "))
     update_every = 3  # seconds
     progressbar_length = 20
     passed_time = 0
