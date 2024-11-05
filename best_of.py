@@ -2,9 +2,18 @@ import schedule_maker
 import db
 import copy
 import random
+import time
+
 
 teachers_gaps_rating_modifier = 5
-offline_pairs_gaps_rating_modifier = 20
+offline_pairs_gaps_rating_modifier = 25
+owervorked_teachers_rating_modifier = 50
+
+
+max_working_hours_for_teacher = 36
+
+
+# region Utils
 
 
 def shuffled_dict(x: dict) -> dict:
@@ -16,6 +25,10 @@ def shuffled_dict(x: dict) -> dict:
 def shuffled_tuple(x: tuple) -> tuple:
     random.shuffle(copy.deepcopy(list(x)))
     return tuple(x)
+
+
+def sub_percentage(x: float, percentage: float) -> float:
+    return x - (x * percentage / 100)
 
 
 def shuffle_data(data_obj: db.Data, seed: int) -> db.Data:
@@ -32,6 +45,19 @@ def shuffle_data(data_obj: db.Data, seed: int) -> db.Data:
     data_obj.discipline_hours = shuffled_dict(data_obj.discipline_hours)
     data_obj.groups_shift = shuffled_dict(data_obj.groups_shift)
     return data_obj
+
+
+def get_top(seeds_rating_dict: dict, count: int) -> dict:
+    seeds_rating_dict = {k: v for k, v in sorted(seeds_rating_dict.items(), key=lambda item: item[1])}
+    if len(seeds_rating_dict) < count:
+        return seeds_rating_dict
+    return dict(list(seeds_rating_dict.items())[-count:][::-1])
+
+
+# endregion
+
+
+# region Schedule rating
 
 
 def count_teachers_gaps(original_data: db.Data, remaining_data: db.Data) -> int:
@@ -59,12 +85,22 @@ def count_offline_pairs_gaps(pairs: dict[str, list[db.Pair]], data_obj: db.Data)
         for day in db.workweek_days:
             offline_pair_numbers_for_day = [pair.number for pair in list_of_pairs if pair.day == day and pair.number in offline_pair_numbers]
             if len(offline_pair_numbers_for_day) != len(offline_pair_numbers):
-                count += len(offline_pair_numbers) - len(offline_pair_numbers_for_day)
+                count += max(0, len(offline_pair_numbers) - len(offline_pair_numbers_for_day))
     return count
 
 
-def sub_percentage(x: float, percentage: float) -> float:
-    return x - (x * percentage / 100)
+def count_overworked_teachers(pairs: dict[str, list[db.Pair]]) -> int:
+    count_hours_for_teachers = {}
+    for group, list_of_pairs in pairs.items():
+        for pair in list_of_pairs:
+            if pair.teacher not in count_hours_for_teachers:
+                count_hours_for_teachers[pair.teacher] = 0
+            count_hours_for_teachers[pair.teacher] += 2
+    count = 0
+    for teacher, count_hours in count_hours_for_teachers.items():
+        if count_hours > max_working_hours_for_teacher:
+            count += 1
+    return count
 
 
 def rate_schedule(schedule: dict[str, list[db.Pair]], original_data: db.Data, remaining_data: db.Data) -> float:
@@ -73,35 +109,90 @@ def rate_schedule(schedule: dict[str, list[db.Pair]], original_data: db.Data, re
     rate = sub_percentage(rate, teachers_gaps_count * teachers_gaps_rating_modifier)
 
     offline_pairs_gaps = count_offline_pairs_gaps(schedule, original_data)
-
     rate = sub_percentage(rate, offline_pairs_gaps * offline_pairs_gaps_rating_modifier)
-    return rate
+
+    overworked_teachers = count_overworked_teachers(schedule)
+    rate = sub_percentage(rate, overworked_teachers * owervorked_teachers_rating_modifier)
+
+    return max(0, rate)
+
+# endregion
 
 
-def get_top(seeds_rating_dict: dict, count: int) -> dict:
-    seeds_rating_dict = {k: v for k, v in sorted(seeds_rating_dict.items(), key=lambda item: item[1])}
-    if len(seeds_rating_dict) < count:
-        return seeds_rating_dict
-    return dict(list(seeds_rating_dict.items())[-count:])
+'''if __name__ == "__main__":
+    data = db.ExampleData()
+    seeds_rating = {}  # 7572: 56.25
+
+    """schedule_obj = schedule_maker.make_full_schedule(shuffle_data(data, 7572))
+    schedule_maker.print_schedule(schedule_obj.pairs)
+    print(f"Teachers gaps: {count_teachers_gaps(data, schedule_obj.remaining_data)}")
+    print(f"Offline pairs gaps: {count_offline_pairs_gaps(schedule_obj.pairs, data)}")
+    print(f"Overworked teachers: {count_overworked_teachers(schedule_obj.pairs)}")"""
+
+    count_iterations = 10000
+    update_every = 3  # seconds
+    progressbar_length = 20
+    passed_time = 0
+    start_time = time.time()
+
+    for seed in range(1, count_iterations+1):
+        if time.time() - (passed_time + start_time) > update_every:  # condition: every 1 second
+            passed_time = time.time() - start_time
+            approx_time = count_iterations*passed_time/seed
+            remaining_time = approx_time - passed_time
+            completion_percentage = round((seed / count_iterations) * 100, 2)
+            progressbar = "[" + ("█" * (int(completion_percentage / 100 * progressbar_length)) + "▁" * (progressbar_length - int(completion_percentage / 100 * progressbar_length))) + "]"
+            print(f"Осталось времени: {str(round(remaining_time // 60))+"м, " if remaining_time >= 60 else ""}{round(remaining_time % 60)}с. {progressbar} {round(completion_percentage)}%")
+        data_copy = shuffle_data(data, seed)
+        schedule_obj = schedule_maker.make_full_schedule(data_copy)
+        schedule_rating = rate_schedule(schedule_obj.pairs, data_copy, schedule_obj.remaining_data)
+        del schedule_obj
+        seeds_rating[seed] = schedule_rating
+
+    print(f"Top 10 seeds:\n{"\n".join([f"{k}:\t{v}" for k, v in get_top(seeds_rating, 10).items()])}")
+    best_seed = max(seeds_rating, key=seeds_rating.get)
+    data_for_seed = shuffle_data(data, best_seed)
+    best_schedule_obj = schedule_maker.make_full_schedule(shuffle_data(data_for_seed, best_seed))
+    print(f"Best schedule (seed {best_seed}: {seeds_rating[best_seed]}):")
+    schedule_maker.print_schedule(best_schedule_obj.pairs)
+    print(f"Teachers gaps: {count_teachers_gaps(data_for_seed, best_schedule_obj.remaining_data)}")
+    print(f"Offline pairs gaps: {count_offline_pairs_gaps(best_schedule_obj.pairs, data_for_seed)}")
+    print(f"Overworked teachers: {count_overworked_teachers(best_schedule_obj.pairs)}")'''
 
 
 if __name__ == "__main__":
     data = db.ExampleData()
-    data.groups_shift = {
-        list(data.groups_shift.keys())[0]: data.groups_shift[list(data.groups_shift.keys())[0]]
-    }
+    best_data = None
+    best_schedule_obj = None
+    best_rating = 0
 
-    seeds_rating = {}
+    count_iterations = 15000
+    update_every = 3  # seconds
+    progressbar_length = 20
+    passed_time = 0
+    start_time = time.time()
 
-    for seed in range(100):
-        data = shuffle_data(data, seed)
-        schedule_obj = schedule_maker.make_full_schedule(data)
-        gaps = rate_schedule(schedule_obj.pairs, data, schedule_obj.remaining_data)
-        seeds_rating[seed] = gaps
+    for seed in range(1, count_iterations+1):
+        if time.time() - (passed_time + start_time) > update_every:  # condition: every 1 second
+            passed_time = time.time() - start_time
+            approx_time = count_iterations*passed_time/seed
+            remaining_time = approx_time - passed_time
+            completion_percentage = round((seed / count_iterations) * 100, 2)
+            progressbar = "[" + ("█" * (int(completion_percentage / 100 * progressbar_length)) + "▁" * (progressbar_length - int(completion_percentage / 100 * progressbar_length))) + "]"
+            print(f"Осталось времени: {str(round(remaining_time // 60))+"м, " if remaining_time >= 60 else ""}{round(remaining_time % 60)}с. {progressbar} {round(completion_percentage)}%")
+        data_copy = shuffle_data(data, seed)
+        schedule_obj = schedule_maker.make_full_schedule(data_copy)
+        schedule_rating = rate_schedule(schedule_obj.pairs, data_copy, schedule_obj.remaining_data)
+        if schedule_rating > best_rating:
+            best_rating = schedule_rating
+            del best_schedule_obj
+            best_schedule_obj = copy.deepcopy(schedule_obj)
+            best_data = copy.deepcopy(data_copy)
+        else:
+            del schedule_obj
 
-    print(f"Top 10 seeds:\n{"\n".join([f"{k}:\t{v}" for k, v in get_top(seeds_rating, 10).items()])}")
-    best_seed = max(seeds_rating, key=seeds_rating.get)
-    schedule_obj = schedule_maker.make_full_schedule(shuffle_data(data, best_seed))
-    print(f"Best schedule (seed {best_seed}):")
-    schedule_maker.print_schedule(schedule_obj.pairs)
-
+    print(f"Best schedule: {best_rating}")
+    schedule_maker.print_schedule(best_schedule_obj.pairs)
+    print(f"Teachers gaps: {count_teachers_gaps(best_data, best_schedule_obj.remaining_data)}")
+    print(f"Offline pairs gaps: {count_offline_pairs_gaps(best_schedule_obj.pairs, best_data)}")
+    print(f"Overworked teachers: {count_overworked_teachers(best_schedule_obj.pairs)}")
