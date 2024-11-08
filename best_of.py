@@ -8,6 +8,7 @@ import time
 teachers_gaps_rating_modifier = 5
 offline_pairs_gaps_rating_modifier = 25
 owervorked_teachers_rating_modifier = 50
+unissued_hours_rating_modifier = 3
 
 
 max_working_hours_for_teacher = 36
@@ -58,6 +59,14 @@ def get_top(seeds_rating_dict: dict, count: int) -> dict:
 
 
 # region Schedule rating
+
+
+def count_unissued_hours(remaining_data: db.Data) -> int:
+    count = 0
+    for group, discipline_hours in remaining_data.discipline_hours.items():
+        for discipline, hours in discipline_hours.items():
+            count += hours
+    return count
 
 
 def count_teachers_gaps(original_data: db.Data, remaining_data: db.Data) -> int:
@@ -114,9 +123,66 @@ def rate_schedule(schedule: dict[str, list[db.Pair]], original_data: db.Data, re
     overworked_teachers = count_overworked_teachers(schedule)
     rate = sub_percentage(rate, overworked_teachers * owervorked_teachers_rating_modifier)
 
+    unissued_hours = count_unissued_hours(remaining_data)
+    rate = sub_percentage(rate, unissued_hours * unissued_hours_rating_modifier)
+
     return max(0, rate)
 
+
+def get_counts(schedule: dict[str, list[db.Pair]], original_data: db.Data, remaining_data: db.Data) -> dict:
+    return {
+        "teachers_gaps_count": count_teachers_gaps(original_data, remaining_data),
+        "offline_pairs_gaps": count_offline_pairs_gaps(schedule, original_data),
+        "overworked_teachers": count_overworked_teachers(schedule),
+        "unissued_hours": count_unissued_hours(remaining_data),
+    }
+
+
 # endregion
+
+
+if __name__ == "__main__":
+    data = db.ExampleData()
+    best_data = None
+    best_schedule_obj = None
+    best_rating = 0
+
+    count_iterations = int(input("Введите количество итераций: "))
+    update_every = 3  # seconds
+    progressbar_length = 20
+    passed_time = 0
+    start_time = time.time()
+
+    for seed in range(1, count_iterations+1):
+        if time.time() - (passed_time + start_time) > update_every:  # condition: every 1 second
+            passed_time = time.time() - start_time
+            approx_time = count_iterations*passed_time/seed
+            remaining_time = approx_time - passed_time
+            completion_percentage = round((seed / count_iterations) * 100, 2)
+            progressbar = "[" + ("█" * (int(completion_percentage / 100 * progressbar_length)) + "▁" * (progressbar_length - int(completion_percentage / 100 * progressbar_length))) + "]"
+            best_schedule_counts = get_counts(best_schedule_obj.pairs, best_data, best_schedule_obj.remaining_data)
+            best_schedule_counts_str = (f"TG: {best_schedule_counts['teachers_gaps_count']}, "
+                                        f"OPG: {best_schedule_counts['offline_pairs_gaps']}, "
+                                        f"OT: {best_schedule_counts['overworked_teachers']}, "
+                                        f"UH: {best_schedule_counts['unissued_hours']}")
+            print(f"Осталось времени: {str(round(remaining_time // 60)).rjust(2, '0')+"м, " if remaining_time >= 60 else ""}{str(round(remaining_time % 60)).rjust(2, '0')}с. {progressbar} {str(round(completion_percentage)).rjust(2, '0')}% / ({best_schedule_counts_str})")
+        data_copy = shuffle_data(data, seed)
+        schedule_obj = schedule_maker.make_full_schedule(data_copy)
+        schedule_rating = rate_schedule(schedule_obj.pairs, data_copy, schedule_obj.remaining_data)
+        if schedule_rating > best_rating:
+            best_rating = schedule_rating
+            del best_schedule_obj
+            best_schedule_obj = copy.deepcopy(schedule_obj)
+            best_data = copy.deepcopy(data_copy)
+        else:
+            del schedule_obj
+
+    print(f"Best schedule: {best_rating}")
+    schedule_maker.print_schedule(best_schedule_obj.pairs)
+    print(f"Teachers gaps: {count_teachers_gaps(best_data, best_schedule_obj.remaining_data)}")
+    print(f"Offline pairs gaps: {count_offline_pairs_gaps(best_schedule_obj.pairs, best_data)}")
+    print(f"Overworked teachers: {count_overworked_teachers(best_schedule_obj.pairs)}")
+    print(f"Unissued hours: {count_unissued_hours(best_schedule_obj.remaining_data)}")
 
 
 '''if __name__ == "__main__":
@@ -158,41 +224,3 @@ def rate_schedule(schedule: dict[str, list[db.Pair]], original_data: db.Data, re
     print(f"Teachers gaps: {count_teachers_gaps(data_for_seed, best_schedule_obj.remaining_data)}")
     print(f"Offline pairs gaps: {count_offline_pairs_gaps(best_schedule_obj.pairs, data_for_seed)}")
     print(f"Overworked teachers: {count_overworked_teachers(best_schedule_obj.pairs)}")'''
-
-
-if __name__ == "__main__":
-    data = db.ExampleData()
-    best_data = None
-    best_schedule_obj = None
-    best_rating = 0
-
-    count_iterations = int(input("Введите количество итераций: "))
-    update_every = 3  # seconds
-    progressbar_length = 20
-    passed_time = 0
-    start_time = time.time()
-
-    for seed in range(1, count_iterations+1):
-        if time.time() - (passed_time + start_time) > update_every:  # condition: every 1 second
-            passed_time = time.time() - start_time
-            approx_time = count_iterations*passed_time/seed
-            remaining_time = approx_time - passed_time
-            completion_percentage = round((seed / count_iterations) * 100, 2)
-            progressbar = "[" + ("█" * (int(completion_percentage / 100 * progressbar_length)) + "▁" * (progressbar_length - int(completion_percentage / 100 * progressbar_length))) + "]"
-            print(f"Осталось времени: {str(round(remaining_time // 60))+"м, " if remaining_time >= 60 else ""}{round(remaining_time % 60)}с. {progressbar} {round(completion_percentage)}%")
-        data_copy = shuffle_data(data, seed)
-        schedule_obj = schedule_maker.make_full_schedule(data_copy)
-        schedule_rating = rate_schedule(schedule_obj.pairs, data_copy, schedule_obj.remaining_data)
-        if schedule_rating > best_rating:
-            best_rating = schedule_rating
-            del best_schedule_obj
-            best_schedule_obj = copy.deepcopy(schedule_obj)
-            best_data = copy.deepcopy(data_copy)
-        else:
-            del schedule_obj
-
-    print(f"Best schedule: {best_rating}")
-    schedule_maker.print_schedule(best_schedule_obj.pairs)
-    print(f"Teachers gaps: {count_teachers_gaps(best_data, best_schedule_obj.remaining_data)}")
-    print(f"Offline pairs gaps: {count_offline_pairs_gaps(best_schedule_obj.pairs, best_data)}")
-    print(f"Overworked teachers: {count_overworked_teachers(best_schedule_obj.pairs)}")

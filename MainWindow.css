@@ -73,3 +73,10 @@ QMessageBox QPushButton {
 QPushButton:disabled {
     background-color: #1f5721;
 }
+
+QLabel {
+    font-size: 20px;
+    color: #333;
+    margin: 5px 0;
+    background-color: #ddd;
+}

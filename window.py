@@ -1,18 +1,164 @@
-import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, \
-    QHBoxLayout, QWidget, QAbstractItemView, QMessageBox, QLabel, QListWidget, QDialog, QCheckBox
-from PyQt5.QtCore import Qt, QEvent
+    QHBoxLayout, QWidget, QAbstractItemView, QMessageBox, QLabel, QListWidget, QDialog, QCheckBox, QSlider, \
+    QProgressBar
+from PyQt5.QtCore import Qt, QEvent, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QIcon
 import schedule_maker
 import db
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
-from datetime import time
+import datetime
+import time
 import os
 import traceback
 import build
+import sys
+import copy
+import best_of
 
 data: db.Data
+
+
+class ScheduleGeneratorWorkerThread(QThread):
+    result_ready = pyqtSignal(schedule_maker.Schedule, dict)
+
+    def __init__(self, iterations):
+        super().__init__()
+        self.iterations = iterations
+        self.best_data = None
+        self.best_schedule_obj = None
+        self.best_rating = 0
+        self.best_schedule_counts = None
+        self.progress_value = 0
+        self.remaining_time = 0
+
+    def run(self):
+        start_time = time.time()
+
+        for seed in range(1, self.iterations + 1):
+            # Обновляем только переменные прогресса
+            passed_time = time.time() - start_time
+            approx_time = self.iterations * passed_time / seed
+            self.remaining_time = approx_time - passed_time
+            self.progress_value = round((seed / self.iterations) * 100, 2)
+
+            # Основная работа
+            data_copy = best_of.shuffle_data(data, seed)
+            current_schedule_obj = schedule_maker.make_full_schedule(data_copy)
+            schedule_rating = best_of.rate_schedule(
+                current_schedule_obj.pairs,
+                data_copy,
+                current_schedule_obj.remaining_data
+            )
+
+            if schedule_rating > self.best_rating:
+                self.best_rating = schedule_rating
+                del self.best_schedule_obj
+                self.best_schedule_obj = copy.deepcopy(current_schedule_obj)
+                self.best_data = copy.deepcopy(data_copy)
+            else:
+                del current_schedule_obj
+
+        # Завершение работы и отправка результата
+        self.best_schedule_counts = best_of.get_counts(
+            self.best_schedule_obj.pairs,
+            self.best_data,
+            self.best_schedule_obj.remaining_data
+        )
+        rating = {
+            "rate": self.best_rating,
+            "teachers_gaps_count": self.best_schedule_counts['teachers_gaps_count'],
+            "offline_pairs_gaps": self.best_schedule_counts['offline_pairs_gaps'],
+            "overworked_teachers": self.best_schedule_counts['overworked_teachers'],
+            "unissued_hours": self.best_schedule_counts['unissued_hours']
+        }
+        self.result_ready.emit(self.best_schedule_obj, rating)
+
+
+class ScheduleGeneratorDialog(QDialog):
+    result_obtained = pyqtSignal(schedule_maker.Schedule, dict)
+
+    def __init__(self):
+        super().__init__()
+        self.update_timer = QTimer()
+        self.update_timer.timeout.connect(self.update_progress_bar)
+        self.worker_thread = None
+
+        self.result = None
+        self.rating = None
+
+        with open("ScheduleGeneratorDialog.css", "r") as style_file:
+            app.setStyleSheet(style_file.read())
+
+        self.setWindowTitle("Генератор лучшего расписания")
+        self.setGeometry(100, 100, 400, 300)
+
+        layout = QVBoxLayout()
+
+        self.worker_thread = None
+        default_number = 10000
+
+        self.number_label = QLabel(f"Выберите число итераций: {default_number}")
+        layout.addWidget(self.number_label)
+
+        self.number_slider = QSlider(Qt.Horizontal)
+        self.number_slider.setMinimum(1000)
+        self.number_slider.setMaximum(1000000)
+        self.number_slider.setValue(default_number)
+        self.number_slider.setTickInterval(1000)
+        self.number_slider.valueChanged.connect(self.update_number_label)
+        layout.addWidget(self.number_slider)
+
+        self.generate_button = QPushButton("Генерация")
+        self.generate_button.clicked.connect(self.start_generation)
+        layout.addWidget(self.generate_button)
+
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setValue(0)
+        layout.addWidget(self.progress_bar)
+
+        self.remaining_time_label = QLabel()
+        layout.addWidget(self.remaining_time_label)
+
+        self.setLayout(layout)
+
+    def start_generation(self):
+        self.generate_button.setEnabled(False)
+        self.progress_bar.setValue(0)
+        selected_number = self.number_slider.value()
+
+        # Запуск рабочего потока и таймера
+        self.worker_thread = ScheduleGeneratorWorkerThread(selected_number)
+        self.worker_thread.result_ready.connect(self.handle_result)
+        self.worker_thread.finished.connect(self.on_task_finished)
+        self.worker_thread.start()
+
+        self.update_timer.start(1000)
+
+    def update_progress_bar(self):
+        # Обновление состояния интерфейса на основе данных из потока
+        if self.worker_thread:
+            self.progress_bar.setValue(int(self.worker_thread.progress_value))
+            remaining_time = self.worker_thread.remaining_time
+            self.remaining_time_label.setText((
+                f"Осталось времени: {str(round(remaining_time // 59)) + 'м, ' if remaining_time >= 60 else ''}"
+                f"{str(round(remaining_time % 59))}с."
+            ))
+
+    def update_number_label(self):
+        self.number_label.setText(f"Выберите число итераций:\n{self.number_slider.value()}")
+
+    def handle_result(self, result, rating):
+        self.result = result
+        self.rating = rating
+        self.result_obtained.emit(result, rating)
+
+    def on_task_finished(self):
+        self.generate_button.setEnabled(True)
+        self.accept()
+
+    def get_result(self):
+        return self.result, self.rating
 
 
 class InputDataDialog(QDialog):
@@ -80,7 +226,8 @@ class InputDataDialog(QDialog):
     def load_test_data(self):
         global data
         resp = QMessageBox.question(
-            self, "Подтверждение", "Вы уверены, что хотите загрузить тестовые данные? Это действие нельзя отменить", QMessageBox.Yes | QMessageBox.No
+            self, "Подтверждение", "Вы уверены, что хотите загрузить тестовые данные? Это действие нельзя отменить",
+            QMessageBox.Yes | QMessageBox.No
         )
         if resp == QMessageBox.Yes:
             data = db.ExampleData()
@@ -89,7 +236,8 @@ class InputDataDialog(QDialog):
     def clear_data(self):
         global data
         resp = QMessageBox.question(
-            self, "Подтверждение", "Вы уверены, что хотите очистить все данные?\nЭто действие нельзя отменить", QMessageBox.Yes | QMessageBox.No
+            self, "Подтверждение", "Вы уверены, что хотите очистить все данные?\nЭто действие нельзя отменить",
+            QMessageBox.Yes | QMessageBox.No
         )
         if resp == QMessageBox.Yes:
             data = db.EmptyData()
@@ -231,8 +379,8 @@ class InputDataDialog(QDialog):
                         group = self.data_table.item(row, 0).text()
                         pair = int(self.data_table.item(row, 1).text())
                         time_str = self.data_table.item(row, 2).text()
-                        start_time = time.fromisoformat(time_str.split(" - ")[0])
-                        end_time = time.fromisoformat(time_str.split(" - ")[1])
+                        start_time = datetime.time.fromisoformat(time_str.split(" - ")[0])
+                        end_time = datetime.time.fromisoformat(time_str.split(" - ")[1])
                         pair_type = self.data_table.item(row, 3).text()
                         variable_data[group][pair] = db.PairTime(start_time, end_time, pair_type)
                     except (ValueError, AttributeError, IndexError):
@@ -415,11 +563,14 @@ class ErrorDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self):
         global data
-        self.current_schedule: dict[str, list[db.Pair]] = None
+        self.current_schedule: schedule_maker.Schedule = None
         self.remaining_data = None
+        self.rating = None
         self.errors = []
         self.temp_excel_file = "ExportSchedule.xlsx"
         self.empty_table_message = "Здесь отобразится сгенерированное расписание"
+        self.table_headers = ["Группа", "День", "Время", "Форма", "Предмет", "Педагог", "Каб."]
+        self.current_cell = None
 
         super().__init__()
 
@@ -436,6 +587,7 @@ class MainWindow(QMainWindow):
         self.table_widget.setHorizontalHeaderLabels(["Расписание"])
         self.table_widget.setItem(0, 0, QTableWidgetItem(self.empty_table_message))
         self.table_widget.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table_widget.cellClicked.connect(self.on_cell_click)
 
         self.button_layout = QVBoxLayout()
 
@@ -456,6 +608,18 @@ class MainWindow(QMainWindow):
         self.input_data_button.clicked.connect(self.input_data)
         self.button_layout.addWidget(self.input_data_button)
 
+        self.sort_by_button = QPushButton("Сформировать по...")
+        self.sort_by_button.clicked.connect(self.sort_by)
+        self.sort_by_button.setEnabled(False)
+        self.button_layout.addWidget(self.sort_by_button)
+
+        self.generate_best_schedule_button = QPushButton("Сгенерировать лучшее расписание")
+        self.generate_best_schedule_button.clicked.connect(self.generate_best_schedule)
+        self.button_layout.addWidget(self.generate_best_schedule_button)
+
+        self.schedule_rating_label = QLabel()
+        self.button_layout.addWidget(self.schedule_rating_label)
+
         self.layout.addWidget(self.table_widget)
         self.layout.addLayout(self.button_layout)
 
@@ -469,7 +633,7 @@ class MainWindow(QMainWindow):
             resp = QMessageBox.warning(
                 self,
                 "Информация",
-                "Данные не найдены. Загрузите тестовые или заполните их в окне 'Ввод данных'\nЗагрузить тестовый набор?",
+                "Данные не найдены. Загрузите тестовые или заполните их в окне 'Ввод данных'\nЗагрузить тестовый набор?",
                 QMessageBox.Ok | QMessageBox.Cancel)
 
             if resp == QMessageBox.Ok:
@@ -477,22 +641,50 @@ class MainWindow(QMainWindow):
             else:
                 data = db.EmptyData()
 
+    def schedule_rating_label_update(self, rating: dict[str, int]):
+        names = {
+            "rate": "Рейтинг",
+            "teachers_gaps_count": "Окна у преподавателей",
+            "offline_pairs_gaps": "Пропущенные пары",
+            "overworked_teachers": "Перегруженные преподаватели",
+            "unissued_hours": "Неиспользованные часы",
+        }
+        rating = {names[k]: v for k, v in rating.items()}
+        self.schedule_rating_label.setText(f"Результат:\n - {"\n - ".join([f"{k}: {v}" for k, v in rating.items()])}")
+
+    def on_cell_click(self, row, column):
+        sort_by = {
+            "Группа": "group",
+            "День": "day",
+            "Форма": "pair_type",
+            "Предмет": "discipline",
+            "Педагог": "teacher",
+            "Каб.": "classroom"
+        }
+        self.current_cell = {
+            "row": row,
+            "column": column,
+            "value": self.table_widget.item(row, column).text(),
+            "header": self.table_widget.horizontalHeaderItem(column).text()
+        }
+        if self.current_cell["header"] in sort_by:
+            self.sort_by_button.setText(f"Сформировать по\n{self.current_cell['value']}")
+            self.sort_by_button.setEnabled(True)
+        else:
+            self.sort_by_button.setText("Сформировать по...")
+            self.sort_by_button.setEnabled(False)
+
     def resize_columns(self):
         self.table_widget.resizeColumnsToContents()
 
-    def generate_schedule(self):
-        sch = schedule_maker.make_full_schedule(data)
-        self.current_schedule = sch
-        self.errors = sch.errors
-        self.remaining_data = sch.remaining_data
-        headers = ["Группа", "День", "Время", "Форма", "Предмет", "Педагог", "Каб."]
+    def set_pairs_to_table(self, pairs: dict[str, list[db.Pair]]):
         self.table_widget.setRowCount(0)
-        self.table_widget.setColumnCount(len(headers))
-        self.table_widget.setHorizontalHeaderLabels(headers)
+        self.table_widget.setColumnCount(len(self.table_headers))
+        self.table_widget.setHorizontalHeaderLabels(self.table_headers)
 
         rows: list[str] = []
-        for group, pairs in sch.pairs.items():
-            for pair in pairs:
+        for group, pairs_list in pairs.items():
+            for pair in pairs_list:
                 rows.append([group, pair.day, pair.pair_time.get_str(), pair.pair_type, pair.discipline, pair.teacher,
                              pair.classroom])
 
@@ -504,6 +696,16 @@ class MainWindow(QMainWindow):
 
         self.resize_columns()
 
+    def generate_schedule(self):
+        sch = schedule_maker.make_full_schedule(data)
+        self.current_schedule = sch
+        self.errors = sch.errors
+        self.remaining_data = sch.remaining_data
+        self.rating = {"rate": best_of.rate_schedule(sch.pairs, data, sch.remaining_data)} | best_of.get_counts(
+            sch.pairs, data, sch.remaining_data)
+        self.schedule_rating_label_update(self.rating)
+        self.set_pairs_to_table(sch.pairs)
+        self.resize_columns()
         self.error_button.setText(f"Ошибки: {len(self.errors)}")
         self.error_button.setEnabled(len(self.errors) > 0)
 
@@ -517,9 +719,8 @@ class MainWindow(QMainWindow):
             row_count = self.table_widget.rowCount()
             column_count = self.table_widget.columnCount()
 
-            if row_count == 1 and column_count == 1:
-                if self.empty_table_message == self.table_widget.item(0, 0).text():
-                    raise AttributeError
+            if self.current_schedule is None:
+                raise AttributeError
 
             exp_data = []
             for row in range(row_count):
@@ -568,17 +769,55 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Ошибка", str(e))
             raise e
 
+    def sort_by(self):
+        if self.current_schedule is None:
+            QMessageBox.warning(self, "Ошибка", "Сгенерируйте расписание перед сортировкой")
+            return
+        sort_by = {
+            "Группа": "group",
+            "День": "day",
+            "Форма": "pair_type",
+            "Предмет": "discipline",
+            "Педагог": "teacher",
+            "Каб.": "classroom"
+        }
+        sorted_pairs = schedule_maker.get_schedule_for(
+            sort_by[self.current_cell["header"]],
+            self.current_schedule.pairs,
+            self.current_cell["value"]
+        )
+        sorted_pairs = schedule_maker.sorted_pairs(sorted_pairs)
+        self.set_pairs_to_table(sorted_pairs)
+
+    def generate_best_schedule(self):
+        dialog = ScheduleGeneratorDialog()
+        dialog.result_obtained.connect(self.handle_generator_result)
+        if dialog.exec_() == QDialog.Accepted:
+            result, rating = dialog.get_result()
+            self.handle_generator_result(result, rating)
+
     @staticmethod
     def input_data():
         input_dialog = InputDataDialog()
         input_dialog.exec_()
+
+    def handle_generator_result(self, result: schedule_maker.Schedule, rating: dict[str, int]):
+        self.current_schedule = result
+        self.errors = result.errors
+        self.remaining_data = result.remaining_data
+        self.rating = rating
+        self.set_pairs_to_table(result.pairs)
+        self.resize_columns()
+        self.error_button.setText(f"Ошибки: {len(self.errors)}")
+        self.error_button.setEnabled(len(self.errors) > 0)
+        self.schedule_rating_label_update(self.rating)
 
 
 def global_exception_handler(exctype, value, tb):
     print("Произошла необработанная ошибка:", value)
     with open("error_log.txt", "a", encoding="utf-8") as f:
         f.write(f"Произошла не обработанная ошибка: {value}\n\n")
-        f.write(traceback.format_exc()+"\n\n")
+        f.write(traceback.format_exc() + "\n\n")
         f.write(f"Файл не найден\n{os.listdir('.')}\n\n")
     db.save_data(data)
     sys.__excepthook__(exctype, value, traceback)

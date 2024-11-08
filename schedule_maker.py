@@ -25,20 +25,48 @@ def print_schedule(schedule: dict[str, list[db.Pair]]) -> None:
             print(pair)
 
 
+def sorted_pairs(pairs: dict[str, list[db.Pair]]) -> dict[str, list[db.Pair]]:
+    for group in pairs:
+        pairs[group] = sorted(pairs[group], key=lambda p: db.days.index(p.day))
+    return pairs
+
+
+def get_schedule_for(key: str, pairs: dict[str, list[db.Pair]], value: str) -> dict[str, list[db.Pair]]:
+    pairs_list = copy.deepcopy(pairs)
+    for group in pairs_list:
+        match key:
+            case "group":
+                pairs_list[group] = list(filter(lambda pair: pair.group == value, pairs_list[group]))
+            case "discipline":
+                pairs_list[group] = list(filter(lambda pair: pair.discipline == value, pairs_list[group]))
+            case "teacher":
+                pairs_list[group] = list(filter(lambda pair: pair.teacher == value, pairs_list[group]))
+            case "classroom":
+                pairs_list[group] = list(filter(lambda pair: pair.classroom == value, pairs_list[group]))
+            case "pair_type":
+                pairs_list[group] = list(filter(lambda pair: pair.pair_type == value, pairs_list[group]))
+            case "day":
+                pairs_list[group] = list(filter(lambda pair: pair.day == value, pairs_list[group]))
+            case "number":
+                pairs_list[group] = list(filter(lambda pair: pair.number == value, pairs_list[group]))
+            case "pair_time":
+                pairs_list[group] = list(filter(lambda pair: pair.pair_time == value, pairs_list[group]))
+            case "date":
+                pairs_list[group] = list(filter(lambda pair: pair.date == value, pairs_list[group]))
+            case _:
+                raise ValueError(f"Неизвестный ключ '{key}'")
+    return pairs_list
+
+
 def print_errors(errors_list: list[ScheduleError]) -> None:
     for error in errors_list:
         print(f"Невозможно поставить пару для группы {error.group}, для дисциплины {error.discipline}, оставшиеся часы: {error.hours}")
 
 
-def choose_a_pair_time(
-        existing_pairs: list[db.Pair],
-        discipline: str,
-        group: str,
-        teacher: db.Teacher,
-        data: db.Data) -> db.Pair:
+def choose_a_pair_time(existing_pairs: list[db.Pair], discipline: str,
+                       group: str, teacher: db.Teacher, data: db.Data) -> db.Pair:
     shift = data.groups_shift[group]
     teachers_schedule = data.teachers_work_hours[teacher.name]
-
     # Ищем первое свободное время для дисциплины
     for day in db.days:
         for number, pair_time in shift.items():
@@ -49,7 +77,7 @@ def choose_a_pair_time(
                 continue
             # Создаем объект пары
             pair = db.Pair(
-                date="2024-XX-XX",  # Пример даты, можно сделать динамическим
+                date="2024-XX-XX",  # (Можно изменить на даты текущей недели после составления)
                 day=day,
                 number=number,
                 pair_time=pair_time,
@@ -79,7 +107,7 @@ def distribute_pairs(data: db.Data) -> tuple[dict[str, list[db.Pair]], list[Sche
             # Ищем подходящего преподавателя для дисциплины
             if remaining_hours[group][discipline] == 0:  # M
                 continue
-            for teacher in data.teachers.values():  # M у каждого преподавателя есть группы за которые он отвечает и дисциплины
+            for teacher in data.teachers.values():
                 if not (discipline in teacher.disciplines and group in teacher.groups): continue
                 try:
                     while remaining_hours[group][discipline] > 0:
@@ -116,8 +144,7 @@ def make_full_schedule(data: db.Data) -> Schedule:
     data = copy.deepcopy(data)
     full_schedule, errors = distribute_pairs(data)
     full_schedule = distribute_classrooms(full_schedule, data)
-    for group in full_schedule:
-        full_schedule[group] = sorted(full_schedule[group], key=lambda p: db.days.index(p.day))
+    full_schedule = sorted_pairs(full_schedule)
     return Schedule(pairs=full_schedule, errors=errors, remaining_data=data)
 
 
