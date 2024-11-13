@@ -9,7 +9,6 @@ from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 import datetime
 import time
-import os
 import traceback
 import build
 import sys
@@ -97,14 +96,17 @@ class ScheduleGeneratorDialog(QDialog):
 
         self.worker_thread = None
         default_number = 10000
+        min_number = 1000
+        max_number = 500000
 
         self.number_label = QLabel(f"Выберите число итераций: {default_number}")
         layout.addWidget(self.number_label)
 
         self.number_slider = QSlider(Qt.Horizontal)
-        self.number_slider.setMinimum(1000)
-        self.number_slider.setMaximum(1000000)
+        self.number_slider.setMinimum(min_number)
+        self.number_slider.setMaximum(max_number)
         self.number_slider.setValue(default_number)
+        self.number_slider.update()
         self.number_slider.setTickInterval(1000)
         self.number_slider.valueChanged.connect(self.update_number_label)
         layout.addWidget(self.number_slider)
@@ -226,7 +228,7 @@ class InputDataDialog(QDialog):
     def load_test_data(self):
         global data
         resp = QMessageBox.question(
-            self, "Подтверждение", "Вы уверены, что хотите загрузить тестовые данные? Это действие нельзя отменить",
+            self, "Подтверждение", "Вы уверены, что хотите загрузить тестовые данные? Это действие нельзя отменить",
             QMessageBox.Yes | QMessageBox.No
         )
         if resp == QMessageBox.Yes:
@@ -236,7 +238,7 @@ class InputDataDialog(QDialog):
     def clear_data(self):
         global data
         resp = QMessageBox.question(
-            self, "Подтверждение", "Вы уверены, что хотите очистить все данные?\nЭто действие нельзя отменить",
+            self, "Подтверждение", "Вы уверены, что хотите очистить все данные?\nЭто действие нельзя отменить",
             QMessageBox.Yes | QMessageBox.No
         )
         if resp == QMessageBox.Yes:
@@ -813,12 +815,11 @@ class MainWindow(QMainWindow):
         self.schedule_rating_label_update(self.rating)
 
 
-def global_exception_handler(exctype, value, tb):
+def global_exception_handler(exctype, value, tb):  # noqa
     print("Произошла необработанная ошибка:", value)
     with open("error_log.txt", "a", encoding="utf-8") as f:
-        f.write(f"Произошла не обработанная ошибка: {value}\n\n")
+        f.write(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Произошла не обработанная ошибка: {value}\n\n")
         f.write(traceback.format_exc() + "\n\n")
-        f.write(f"Файл не найден\n{os.listdir('.')}\n\n")
     db.save_data(data)
     sys.__excepthook__(exctype, value, traceback)
     if not build.no_console:
