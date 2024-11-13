@@ -1,0 +1,42 @@
+import unittest
+import schedule_maker as sm
+import db
+
+
+class ScheduleMakerUnitTest(unittest.TestCase):
+    def test_schedule_maker_example(self):
+        data: db.Data = db.ExampleData()
+        schedule: sm.Schedule = sm.make_full_schedule(data)
+        pairs = [pair for group in schedule.pairs.values() for pair in group]
+
+        self.assertIsInstance(schedule, sm.Schedule)
+        self.assertGreater(len(schedule.pairs), 0)
+        self.assertTrue(all(isinstance(pair, db.Pair) for pair in pairs))
+
+    def test_schedule_maker_empty(self):
+        data: db.Data = db.EmptyData()
+        schedule: sm.Schedule = sm.make_full_schedule(data)
+
+        self.assertIsInstance(schedule, sm.Schedule)
+        self.assertEqual(len(schedule.pairs), 0)
+
+    def test_classroom_distribution(self):
+        data: db.Data = db.ExampleData()
+        full_schedule, errors = sm.distribute_pairs(data)
+        full_schedule = sm.distribute_classrooms(full_schedule, data)
+        classrooms = {pair.classroom for group in full_schedule.values() for pair in group}
+
+        self.assertGreater(len(classrooms), 0)
+        self.assertTrue(all([classroom in data.rooms.keys() for classroom in classrooms]))
+
+    def test_schedule_sampling(self):
+        data: db.Data = db.ExampleData()
+        schedule: sm.Schedule = sm.make_full_schedule(data)
+        sample_value = list(schedule.pairs.values())[0][0].teacher
+        sampled_pairs = sm.get_schedule_for("teacher", schedule.pairs, sample_value)
+
+        self.assertTrue(all([pair.teacher == sample_value for group in sampled_pairs.values() for pair in group]))
+
+
+if __name__ == '__main__':
+    unittest.main()
