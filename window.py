@@ -34,15 +34,15 @@ class ScheduleGeneratorWorkerThread(QThread):
     def run(self):
         start_time = time.time()
 
-        for seed in range(1, self.iterations + 1):
+        for iteration in range(1, self.iterations + 1):
             # Обновляем только переменные прогресса
             passed_time = time.time() - start_time
-            approx_time = self.iterations * passed_time / seed
+            approx_time = self.iterations * passed_time / iteration
             self.remaining_time = approx_time - passed_time
-            self.progress_value = round((seed / self.iterations) * 100, 2)
+            self.progress_value = round((iteration / self.iterations) * 100, 2)
 
             # Основная работа
-            data_copy = best_of.shuffle_data(data, seed)
+            data_copy = best_of.shuffle_data(data)
             current_schedule_obj = schedule_maker.make_full_schedule(data_copy)
             schedule_rating = best_of.rate_schedule(
                 current_schedule_obj.pairs,
@@ -255,7 +255,28 @@ class InputDataDialog(QDialog):
                 self.data_table.removeRow(row.row())
 
     def add_row(self):
-        self.data_table.insertRow(self.data_table.rowCount())
+        row = self.data_table.rowCount()
+        self.data_table.insertRow(row)
+
+        if self.current_variable not in ["teachers_work_hours", "rooms_availability_hours"]:
+            return
+        num_pairs = len(data.teachers_schedule_time)
+        days_of_week = list(data.days)
+
+        for col, day in enumerate(days_of_week, start=1):
+            day_schedule = [False] * num_pairs
+
+            cell_widget = QWidget()
+            cell_layout = QHBoxLayout(cell_widget)
+            cell_layout.setContentsMargins(0, 0, 0, 0)
+
+            for slot in day_schedule:
+                check_box = QCheckBox()
+                check_box.setChecked(slot)
+                cell_layout.addWidget(check_box)
+
+            cell_widget.setLayout(cell_layout)
+            self.data_table.setCellWidget(row, col, cell_widget)
 
     def display_variable_data(self, current):
         if not current:
@@ -362,7 +383,13 @@ class InputDataDialog(QDialog):
 
                 updated_schedule[day] = day_schedule
 
-            schedule_data[name].schedule_for_days = updated_schedule
+            if name in schedule_data:
+                schedule_data[name].schedule_for_days = updated_schedule
+            else:
+                if self.current_variable == "teachers_work_hours":
+                    schedule_data[name] = db.TeachersSchedule(*list(updated_schedule.values()))
+                elif self.current_variable == "rooms_availability_hours":
+                    schedule_data[name] = db.RoomSchedule(*list(updated_schedule.values()))
 
     def save_changes(self):
         if self.current_variable is None:
@@ -430,13 +457,13 @@ class InputDataDialog(QDialog):
                     self._save_schedule_changes(variable_data)
                 except Exception as e:
                     QMessageBox.warning(self, "Ошибка", f"Ошибка при сохранении расписания: {str(e)}")
-                    return
+                    raise  # return
 
             setattr(data, table_name, variable_data)
 
         except Exception as e:
             QMessageBox.critical(self, "Критическая ошибка", f"Не удалось сохранить изменения: {str(e)}")
-            return
+            raise  # return
 
         if invalid_data:
             # Подготовка информации о первых трех ошибках

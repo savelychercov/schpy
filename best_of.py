@@ -32,8 +32,7 @@ def sub_percentage(x: float, percentage: float) -> float:
     return x - (x * percentage / 100)
 
 
-def shuffle_data(data_obj: db.Data, seed: int) -> db.Data:
-    random.seed(seed)
+def shuffle_data(data_obj: db.Data) -> db.Data:
     data_obj = copy.deepcopy(data_obj)
 
     data_obj.days = shuffled_tuple(data_obj.days)
@@ -153,12 +152,12 @@ if __name__ == "__main__":
     passed_time = 0
     start_time = time.time()
 
-    for seed in range(1, count_iterations+1):
+    for iteration in range(1, count_iterations + 1):
         if time.time() - (passed_time + start_time) > update_every:  # condition: every 1 second
             passed_time = time.time() - start_time
-            approx_time = count_iterations*passed_time/seed
+            approx_time = count_iterations * passed_time / iteration
             remaining_time = approx_time - passed_time
-            completion_percentage = round((seed / count_iterations) * 100, 2)
+            completion_percentage = round((iteration / count_iterations) * 100, 2)
             progressbar = "[" + ("█" * (int(completion_percentage / 100 * progressbar_length)) + "▁" * (progressbar_length - int(completion_percentage / 100 * progressbar_length))) + "]"
             best_schedule_counts = get_counts(best_schedule_obj.pairs, best_data, best_schedule_obj.remaining_data)
             best_schedule_counts_str = (f"TG: {best_schedule_counts['teachers_gaps_count']}, "
@@ -166,7 +165,7 @@ if __name__ == "__main__":
                                         f"OT: {best_schedule_counts['overworked_teachers']}, "
                                         f"UH: {best_schedule_counts['unissued_hours']}")
             print(f"Осталось времени: {str(round(remaining_time // 60)).rjust(2, '0')+"м, " if remaining_time >= 60 else ""}{str(round(remaining_time % 60)).rjust(2, '0')}с. {progressbar} {str(round(completion_percentage)).rjust(2, '0')}% / ({best_schedule_counts_str})")
-        data_copy = shuffle_data(data, seed)
+        data_copy = shuffle_data(data)
         schedule_obj = schedule_maker.make_full_schedule(data_copy)
         schedule_rating = rate_schedule(schedule_obj.pairs, data_copy, schedule_obj.remaining_data)
         if schedule_rating > best_rating:

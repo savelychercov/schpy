@@ -15,13 +15,14 @@ dirs = [
 ]
 
 files = [
-    'icon.ico',
-    'schedule_maker.py',
-    'db.py',
-    'MainWindow.css',
-    'InputDataDialog.css',
-    'ErrorDialog.css',
-    # 'db.pickle'
+    "icon.ico",
+    "schedule_maker.py",
+    "best_of.py"
+    "db.py",
+    "MainWindow.css",
+    "InputDataDialog.css",
+    "ErrorDialog.css",
+    "ScheduleGeneratorDialog.css",
 ]
 
 command = [
@@ -54,9 +55,9 @@ def build():
     shutil.rmtree(f"{dist_path}/{title}")
     os.unlink(f"{title}.spec")
 
-    if run_exe:
-        os.startfile(f"{dist_path}\\{title}.exe")
-
 
 if __name__ == '__main__':
     build()
+
+    if run_exe:
+        os.startfile(f"{dist_path}\\{title}.exe")
