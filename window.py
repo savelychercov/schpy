@@ -1,6 +1,8 @@
-from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, \
-    QHBoxLayout, QWidget, QAbstractItemView, QMessageBox, QLabel, QListWidget, QDialog, QCheckBox, QSlider, \
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout,
+    QHBoxLayout, QWidget, QAbstractItemView, QMessageBox, QLabel, QListWidget, QDialog, QCheckBox, QSlider,
     QProgressBar, QComboBox
+)
 from PyQt5.QtCore import Qt, QEvent, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QIcon
 import schedule_maker
