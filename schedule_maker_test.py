@@ -3,12 +3,24 @@ import schedule_maker as sm
 import db
 
 
+def check_legit_pair(pair: db.Pair, data: db.Data):
+    t1 = pair.discipline in data.teachers[pair.teacher].disciplines
+    t2 = pair.group in data.teachers[pair.teacher].groups
+    t3 = data.teachers_work_hours[pair.teacher].schedule_for_days[pair.day][db.TeachersSchedule.get_pair_number(pair.pair_time)-1]
+    t4 = pair.classroom in data.rooms
+    t5 = not data.rooms_availability_hours[pair.classroom].schedule_for_days[pair.day][db.RoomSchedule.get_pair_number(pair.pair_time)-1]
+
+    return all([t1, t2, t3, t4, t5])
+
+
 class ScheduleMakerUnitTest(unittest.TestCase):
     def test_schedule_maker_example(self):
         data: db.Data = db.ExampleData()
         schedule: sm.Schedule = sm.make_full_schedule(data)
         pairs = [pair for group in schedule.pairs.values() for pair in group]
 
+        for pair in pairs:
+            self.assertTrue(check_legit_pair(pair, data))
         self.assertIsInstance(schedule, sm.Schedule)
         self.assertGreater(len(schedule.pairs), 0)
         self.assertTrue(all(isinstance(pair, db.Pair) for pair in pairs))

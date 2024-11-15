@@ -264,17 +264,23 @@ class InputDataDialog(QDialog):
             self.data_table.setCellWidget(row, 0, dropdown)
         elif self.current_variable == "groups_shift":
             self.data_table.setItem(row, 0, QTableWidgetItem("Группа"))
-            self.data_table.setItem(row, 1, QTableWidgetItem("Пара"))
+            self.data_table.setItem(row, 1, QTableWidgetItem("№"))
+            self.data_table.setItem(row, 2, QTableWidgetItem("ЧЧ:ММ - ЧЧ:ММ"))
+            self.data_table.setItem(row, 3, QTableWidgetItem("Онлайн / Офлайн"))
         elif self.current_variable == "teachers":
             self.data_table.setItem(row, 0, QTableWidgetItem("ФИО"))
+            self.data_table.setItem(row, 1, QTableWidgetItem("Дисциплины через запятую"))
+            self.data_table.setItem(row, 2, QTableWidgetItem("Группы через запятую"))
         elif self.current_variable == "rooms":
             self.data_table.setItem(row, 0, QTableWidgetItem("Аудитория"))
+            self.data_table.setItem(row, 1, QTableWidgetItem("Да / Нет"))
         elif self.current_variable == "teachers_work_hours":
             self.data_table.setItem(row, 0, QTableWidgetItem("ФИО"))
         elif self.current_variable == "rooms_availability_hours":
             self.data_table.setItem(row, 0, QTableWidgetItem("Аудитория"))
 
         if self.current_variable not in ["teachers_work_hours", "rooms_availability_hours"]:
+            self.data_table.resizeColumnsToContents()
             return
         num_pairs = len(data.teachers_schedule_time)
         days_of_week = list(data.days)
@@ -293,6 +299,7 @@ class InputDataDialog(QDialog):
 
             cell_widget.setLayout(cell_layout)
             self.data_table.setCellWidget(row, col, cell_widget)
+
         self.data_table.resizeColumnsToContents()
 
     def display_variable_data(self, current):
