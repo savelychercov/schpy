@@ -17,7 +17,7 @@ dirs = [
 files = [
     "icon.ico",
     "schedule_maker.py",
-    "best_of.py"
+    "best_of.py",
     "db.py",
     "MainWindow.css",
     "InputDataDialog.css",
@@ -27,23 +27,23 @@ files = [
 
 command = [
     start_file,
-    '--noconfirm',
-    '--onefile',
-    f'--icon={icon_name}',
-    f'--name={title}',
-    '--clean',
-    f'--distpath={dist_path}',
+    "--noconfirm",
+    "--onefile",
+    f"--icon={icon_name}",
+    f"--name={title}",
+    "--clean",
+    f"--distpath={dist_path}",
 ]
 
 if no_console:
-    command.append('--noconsole')
+    command.append("--noconsole")
 
 for d in dirs:
-    command.append(f'--add-data={d};{d}/')
+    command.append(f"--add-data={d};{d}/")
 
 for filename in files:
     filename = os.path.join(current_directory, filename)
-    command.append(f'--add-data={filename};.')
+    command.append(f"--add-data={filename};.")
 
 
 def build():
@@ -56,7 +56,7 @@ def build():
     os.unlink(f"{title}.spec")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     build()
 
     if run_exe:

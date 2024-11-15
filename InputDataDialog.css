@@ -91,3 +91,15 @@ QTableWidget::item:selected {
     background-color: #d1e7dd;
     color: black;
 }
+
+QComboBox {
+    font: 12pt "Arial";
+    border: 1px solid #4CAF50;
+    width: 150px;
+    border-radius: 5px;
+    background-color: #ffffff;
+    height: 20px;
+    width: 40px;
+    margin: -15px;
+    padding-left: 20px;
+}

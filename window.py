@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QPushButton, QVBoxLayout, \
     QHBoxLayout, QWidget, QAbstractItemView, QMessageBox, QLabel, QListWidget, QDialog, QCheckBox, QSlider, \
-    QProgressBar
+    QProgressBar, QComboBox
 from PyQt5.QtCore import Qt, QEvent, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QIcon
 import schedule_maker
@@ -257,6 +257,22 @@ class InputDataDialog(QDialog):
     def add_row(self):
         row = self.data_table.rowCount()
         self.data_table.insertRow(row)
+        
+        if self.current_variable == "discipline_hours":
+            dropdown = QComboBox()
+            dropdown.addItems(data.groups_shift.keys())
+            self.data_table.setCellWidget(row, 0, dropdown)
+        elif self.current_variable == "groups_shift":
+            self.data_table.setItem(row, 0, QTableWidgetItem("Группа"))
+            self.data_table.setItem(row, 1, QTableWidgetItem("Пара"))
+        elif self.current_variable == "teachers":
+            self.data_table.setItem(row, 0, QTableWidgetItem("ФИО"))
+        elif self.current_variable == "rooms":
+            self.data_table.setItem(row, 0, QTableWidgetItem("Аудитория"))
+        elif self.current_variable == "teachers_work_hours":
+            self.data_table.setItem(row, 0, QTableWidgetItem("ФИО"))
+        elif self.current_variable == "rooms_availability_hours":
+            self.data_table.setItem(row, 0, QTableWidgetItem("Аудитория"))
 
         if self.current_variable not in ["teachers_work_hours", "rooms_availability_hours"]:
             return
@@ -277,6 +293,7 @@ class InputDataDialog(QDialog):
 
             cell_widget.setLayout(cell_layout)
             self.data_table.setCellWidget(row, col, cell_widget)
+        self.data_table.resizeColumnsToContents()
 
     def display_variable_data(self, current):
         if not current:
@@ -420,7 +437,10 @@ class InputDataDialog(QDialog):
             elif table_name == "discipline_hours":
                 for row in range(self.data_table.rowCount()):
                     try:
-                        group = self.data_table.item(row, 0).text()
+                        if self.data_table.item(row, 0) is None:
+                            group = self.data_table.cellWidget(row, 0).currentText()
+                        else:
+                            group = self.data_table.item(row, 0).text()
                         discipline = self.data_table.item(row, 1).text()
                         hours = int(self.data_table.item(row, 2).text())
                         variable_data[group][discipline] = hours
@@ -436,6 +456,8 @@ class InputDataDialog(QDialog):
                         disciplines = set(self.data_table.item(row, 1).text().split(", "))
                         groups = set(self.data_table.item(row, 2).text().split(", "))
                         variable_data[name] = db.Teacher(name, disciplines, groups)
+                        if name not in data.teachers_work_hours.keys():
+                            data.teachers_work_hours[name] = db.TeachersSchedule()
                     except AttributeError:
                         row_data = [self.data_table.item(row, col).text() for col in
                                     range(self.data_table.columnCount())]
@@ -447,6 +469,8 @@ class InputDataDialog(QDialog):
                         room = self.data_table.item(row, 0).text()
                         is_online = self.data_table.item(row, 1).text() == "Да"
                         variable_data[room] = db.Room(is_online)
+                        if room not in data.rooms_availability_hours.keys():
+                            data.rooms_availability_hours[room] = db.RoomSchedule()
                     except AttributeError:
                         row_data = [self.data_table.item(row, col).text() for col in
                                     range(self.data_table.columnCount())]
@@ -457,13 +481,16 @@ class InputDataDialog(QDialog):
                     self._save_schedule_changes(variable_data)
                 except Exception as e:
                     QMessageBox.warning(self, "Ошибка", f"Ошибка при сохранении расписания: {str(e)}")
-                    raise  # return
 
             setattr(data, table_name, variable_data)
 
+        except AttributeError:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить изменения (В таблице есть пустые поля)")
+            return
+
         except Exception as e:
-            QMessageBox.critical(self, "Критическая ошибка", f"Не удалось сохранить изменения: {str(e)}")
-            raise  # return
+            QMessageBox.critical(self, "Критическая ошибка", f"Не удалось сохранить изменения ({type(e).__name__}): {str(e)}")
+            return
 
         if invalid_data:
             # Подготовка информации о первых трех ошибках
@@ -730,8 +757,18 @@ class MainWindow(QMainWindow):
         self.current_schedule = sch
         self.errors = sch.errors
         self.remaining_data = sch.remaining_data
-        self.rating = {"rate": best_of.rate_schedule(sch.pairs, data, sch.remaining_data)} | best_of.get_counts(
+        rating = {"rate": best_of.rate_schedule(sch.pairs, data, sch.remaining_data)} | best_of.get_counts(
             sch.pairs, data, sch.remaining_data)
+        if self.rating is not None and self.rating["rate"] > rating["rate"]:
+            resp = QMessageBox.question(
+                self,
+                "Внимание",
+                f"Новое расписание получилось хуже предыдущего (Рейтинг {rating['rate']})\nПрименить новое расписание?",
+                buttons=QMessageBox.Ok | QMessageBox.Cancel
+            )
+            if resp == QMessageBox.Cancel:
+                return
+        self.rating = rating
         self.schedule_rating_label_update(self.rating)
         self.set_pairs_to_table(sch.pairs)
         self.resize_columns()
@@ -831,6 +868,16 @@ class MainWindow(QMainWindow):
         input_dialog.exec_()
 
     def handle_generator_result(self, result: schedule_maker.Schedule, rating: dict[str, int]):
+        if self.rating is not None and self.rating["rate"] > rating["rate"]:
+            resp = QMessageBox.question(
+                self,
+                "Внимание",
+                f"Новое расписание получилось хуже предыдущего (Рейтинг {rating['rate']})\nПрименить новое расписание?",
+                buttons=QMessageBox.Ok | QMessageBox.Cancel
+            )
+            if resp == QMessageBox.Cancel:
+                return
+
         self.current_schedule = result
         self.errors = result.errors
         self.remaining_data = result.remaining_data
