@@ -21,8 +21,8 @@ files = [
     "db.py",
     "MainWindow.css",
     "InputDataDialog.css",
-    "ErrorDialog.css",
     "ScheduleGeneratorDialog.css",
+    "ErrorDialog.css",
 ]
 
 command = [
@@ -43,6 +43,7 @@ for d in dirs:
 
 for filename in files:
     filename = os.path.join(current_directory, filename)
+    print("Adding file:", filename)
     command.append(f"--add-data={filename};.")
 
 

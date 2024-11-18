@@ -103,6 +103,7 @@ def distribute_pairs(data: db.Data) -> tuple[dict[str, list[db.Pair]], list[Sche
     for group in data.groups_shift.keys():
         full_schedule[group] = []  # Инициализируем список для каждой группы
         # Итерируемся по дисциплинам
+        if group not in remaining_hours: continue
         for discipline in remaining_hours[group]:  # M получаем недельные часы по дисциплине.
             # Ищем подходящего преподавателя для дисциплины
             if remaining_hours[group][discipline] == 0:  # M

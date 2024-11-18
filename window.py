@@ -88,8 +88,9 @@ class ScheduleGeneratorDialog(QDialog):
         self.result = None
         self.rating = None
 
-        with open("ScheduleGeneratorDialog.css", "r") as style_file:
+        with open(db.resource_path("ScheduleGeneratorDialog.css"), "r") as style_file:
             app.setStyleSheet(style_file.read())
+        self.setWindowIcon(QIcon(db.resource_path("icon.ico")))
 
         self.setWindowTitle("Генератор лучшего расписания")
         self.setGeometry(100, 100, 400, 300)
@@ -167,10 +168,11 @@ class ScheduleGeneratorDialog(QDialog):
 
 class InputDataDialog(QDialog):
     def __init__(self):
-        super().__init__()
+        super().__init__(parent=None)
 
         with open(db.resource_path("InputDataDialog.css"), "r") as f:
             self.setStyleSheet(f.read())
+        self.setWindowIcon(QIcon(db.resource_path("icon.ico")))
 
         self.vars_to_redact = {
             "Смены групп": "groups_shift",
@@ -183,7 +185,7 @@ class InputDataDialog(QDialog):
 
         self.setWindowTitle("Ввод данных")
         self.setGeometry(100, 100, 1200, 600)
-        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window)
 
         self.layout = QHBoxLayout(self)
 
@@ -251,10 +253,12 @@ class InputDataDialog(QDialog):
         resp = QMessageBox.question(
             self, "Подтверждение", "Удалить выделенные строки?", QMessageBox.Yes | QMessageBox.No
         )
-        if resp == QMessageBox.Yes:
-            selected_rows = self.data_table.selectionModel().selectedRows()
-            for row in selected_rows:
-                self.data_table.removeRow(row.row())
+        if resp != QMessageBox.Yes: return
+
+        selected_indexes = self.data_table.selectionModel().selectedRows()
+        selected_rows = sorted([index.row() for index in selected_indexes], reverse=True)
+        for row in selected_rows:
+            self.data_table.model().removeRow(row)
 
     def add_row(self):
         row = self.data_table.rowCount()
@@ -315,18 +319,24 @@ class InputDataDialog(QDialog):
         self.data_table.setRowCount(0)
 
         if variable_name == "groups_shift":
-            headers = ["Группа", "Пара", "Время", "Тип"]
+            headers = ["Группа", "Смена"]
             self.data_table.setColumnCount(len(headers))
             self.data_table.setHorizontalHeaderLabels(headers)
             row = 0
             for group, schedule in variable_data.items():
-                for pair, time_obj in schedule.items():
-                    self.data_table.insertRow(row)
-                    self.data_table.setItem(row, 0, QTableWidgetItem(group))
-                    self.data_table.setItem(row, 1, QTableWidgetItem(str(pair)))
-                    self.data_table.setItem(row, 2, QTableWidgetItem(time_obj.get_str()))
-                    self.data_table.setItem(row, 3, QTableWidgetItem(time_obj.pair_type))
-                    row += 1
+                shift = None
+                # Определяем смену, исходя из расписания
+                if schedule == data.schedule_time_shift_1:
+                    shift = "1"
+                elif schedule == data.schedule_time_shift_2:
+                    shift = "2"
+                elif schedule == data.schedule_time_shift_3:
+                    shift = "3"
+
+                self.data_table.insertRow(row)
+                self.data_table.setItem(row, 0, QTableWidgetItem(group))
+                self.data_table.setItem(row, 1, QTableWidgetItem(shift))
+                row += 1
 
         elif variable_name == "discipline_hours":
             self.data_table.setColumnCount(3)
@@ -429,21 +439,35 @@ class InputDataDialog(QDialog):
             variable_data = getattr(data, table_name)
 
             if table_name == "groups_shift":
+                variable_data = {}  # Перезаписываем переменную
+
                 for row in range(self.data_table.rowCount()):
                     try:
                         group = self.data_table.item(row, 0).text()
-                        pair = int(self.data_table.item(row, 1).text())
-                        time_str = self.data_table.item(row, 2).text()
-                        start_time = datetime.time.fromisoformat(time_str.split(" - ")[0])
-                        end_time = datetime.time.fromisoformat(time_str.split(" - ")[1])
-                        pair_type = self.data_table.item(row, 3).text()
-                        variable_data[group][pair] = db.PairTime(start_time, end_time, pair_type)
-                    except (ValueError, AttributeError, IndexError):
-                        row_data = [self.data_table.item(row, col).text() for col in
-                                    range(self.data_table.columnCount())]
+                        shift = int(self.data_table.item(row, 1).text())
+
+                        # Определяем расписание по номеру смены
+                        if shift == 1:
+                            schedule = data.schedule_time_shift_1
+                        elif shift == 2:
+                            schedule = data.schedule_time_shift_2
+                        elif shift == 3:
+                            schedule = data.schedule_time_shift_3
+                        else:
+                            raise ValueError("Неверный номер смены")
+
+                        # Сохраняем расписание для группы
+                        variable_data[group] = schedule
+                    except (ValueError, AttributeError, IndexError) as e:
+                        # Собираем данные некорректной строки
+                        row_data = [
+                            self.data_table.item(row, col).text() if self.data_table.item(row, col) else ""
+                            for col in range(self.data_table.columnCount())
+                        ]
                         invalid_data.append(row_data)
 
             elif table_name == "discipline_hours":
+                variable_data = {}
                 for row in range(self.data_table.rowCount()):
                     try:
                         if self.data_table.item(row, 0) is None:
@@ -452,6 +476,8 @@ class InputDataDialog(QDialog):
                             group = self.data_table.item(row, 0).text()
                         discipline = self.data_table.item(row, 1).text()
                         hours = int(self.data_table.item(row, 2).text())
+                        if group not in variable_data:
+                            variable_data[group] = {}
                         variable_data[group][discipline] = hours
                     except (ValueError, AttributeError):
                         row_data = [self.data_table.item(row, col).text() for col in
@@ -459,6 +485,7 @@ class InputDataDialog(QDialog):
                         invalid_data.append(row_data)
 
             elif table_name == "teachers":
+                variable_data = {}
                 for row in range(self.data_table.rowCount()):
                     try:
                         name = self.data_table.item(row, 0).text()
@@ -472,7 +499,14 @@ class InputDataDialog(QDialog):
                                     range(self.data_table.columnCount())]
                         invalid_data.append(row_data)
 
+                data_copy = copy.deepcopy(data.teachers_work_hours)
+                for teacher in data.teachers_work_hours.keys():
+                    if teacher not in variable_data.keys():
+                        data_copy.pop(teacher)
+                data.teachers_work_hours = data_copy
+
             elif table_name == "rooms":
+                variable_data = {}
                 for row in range(self.data_table.rowCount()):
                     try:
                         room = self.data_table.item(row, 0).text()
@@ -484,6 +518,12 @@ class InputDataDialog(QDialog):
                         row_data = [self.data_table.item(row, col).text() for col in
                                     range(self.data_table.columnCount())]
                         invalid_data.append(row_data)
+
+                data_copy = copy.deepcopy(data.rooms_availability_hours)
+                for room in data.rooms_availability_hours.keys():
+                    if room not in variable_data.keys():
+                        data_copy.pop(room)
+                data.rooms_availability_hours = data_copy
 
             elif table_name in ["teachers_work_hours", "rooms_availability_hours"]:
                 try:
@@ -498,7 +538,7 @@ class InputDataDialog(QDialog):
             return
 
         except Exception as e:
-            QMessageBox.critical(self, "Критическая ошибка", f"Не удалось сохранить изменения ({type(e).__name__}): {str(e)}")
+            QMessageBox.critical(self, "Критическая ошибка", f"Не удалось сохранить изменения ({type(e).__name__}): {str(e)}\n\n{traceback.format_exc()}")
             return
 
         if invalid_data:
@@ -509,6 +549,7 @@ class InputDataDialog(QDialog):
 
             QMessageBox.warning(self, "Ошибка данных", error_message)
         else:
+            db.save_data(data)
             QMessageBox.information(self, "Сохранение", f"Данные в таблице '{ru_table_name}' успешно сохранены.")
 
     def event(self, event):
@@ -542,6 +583,7 @@ class ErrorDialog(QDialog):
         # Загрузка стиля
         with open(db.resource_path("ErrorDialog.css"), "r") as f:
             self.setStyleSheet(f.read())
+        self.setWindowIcon(QIcon(db.resource_path("icon.ico")))
 
         # Основной макет с горизонтальным расположением для левой и правой частей
         main_layout = QHBoxLayout(self)
@@ -632,15 +674,15 @@ class MainWindow(QMainWindow):
         self.remaining_data = None
         self.rating = None
         self.errors = []
-        self.temp_excel_file = "ExportSchedule.xlsx"
         self.empty_table_message = "Здесь отобразится сгенерированное расписание"
         self.table_headers = ["Группа", "День", "Время", "Форма", "Предмет", "Педагог", "Каб."]
         self.current_cell = None
+        self.input_dialog = None
 
         super().__init__()
 
         self.setWindowTitle("Составление расписания")
-        self.setWindowIcon(QIcon("icon.ico"))
+        self.setWindowIcon(QIcon(db.resource_path("icon.ico")))
         self.setGeometry(100, 100, 1400, 800)
 
         self.central_widget = QWidget()
@@ -790,12 +832,17 @@ class MainWindow(QMainWindow):
             error_dialog.exec_()
 
     def export_schedule(self):
+        class ExportException(Exception):
+            pass
+
         try:
             row_count = self.table_widget.rowCount()
             column_count = self.table_widget.columnCount()
 
             if self.current_schedule is None:
-                raise AttributeError
+                raise ExportException("Расписание не сформировано")
+
+            file_name = f"ExportSchedule{int(self.rating['rate'])}{datetime.datetime.now().strftime('%H%M%S')}.xlsx"
 
             exp_data = []
             for row in range(row_count):
@@ -810,14 +857,30 @@ class MainWindow(QMainWindow):
             workbook = Workbook()
             sheet = workbook.active
 
-            for col_num, header in enumerate(headers, 1):
+            for col_num, header in enumerate(headers, 1):  # fill headers
                 sheet.cell(row=1, column=col_num, value=header)
 
-            for row_num, row_data in enumerate(exp_data, 2):
+            for row_num, row_data in enumerate(exp_data, 2):  # fill data
                 for col_num, value in enumerate(row_data, 1):
                     sheet.cell(row=row_num, column=col_num, value=value)
 
-            for col in range(1, column_count + 1):
+            sheet.cell(row=1, column=column_count + 2, value=f"Невозможно поставить пары: {len(self.errors)}")
+            err_headers = ["Группа", "Предмет", "Остаток часов"]
+            for col_num, header in enumerate(err_headers, column_count+2):  # fill error headers
+                sheet.cell(row=2, column=col_num, value=header)
+
+            for err_num, err in enumerate(self.errors):  # fill error data
+                sheet.cell(row=3+err_num, column=column_count+2, value=err.group)
+                sheet.cell(row=3+err_num, column=column_count+3, value=err.discipline)
+                sheet.cell(row=3+err_num, column=column_count+4, value=err.hours)
+
+            sheet.cell(row=len(self.errors)+4, column=column_count + 2, value=f"Рейтинг: {self.rating['rate']}")
+            sheet.cell(row=len(self.errors)+5, column=column_count + 2, value=f"Окна у преподавателей: {self.rating['teachers_gaps_count']}")
+            sheet.cell(row=len(self.errors)+6, column=column_count + 2, value=f"Пропущенные пары: {self.rating['offline_pairs_gaps']}")
+            sheet.cell(row=len(self.errors)+7, column=column_count + 2, value=f"Перегруженные преподаватели: {self.rating['overworked_teachers']}")
+            sheet.cell(row=len(self.errors)+8, column=column_count + 2, value=f"Неиспользованные часы: {self.rating['unissued_hours']}")
+
+            for col in range(1, column_count + len(err_headers)+4):  # adjust column width
                 max_length = 0
                 column_letter = get_column_letter(col)
                 for row in range(1, row_count + 2):
@@ -827,7 +890,7 @@ class MainWindow(QMainWindow):
                 adjusted_width = (max_length + 2)
                 sheet.column_dimensions[column_letter].width = adjusted_width
 
-            workbook.save(self.temp_excel_file)
+            workbook.save(file_name)
             resp = QMessageBox.information(
                 self,
                 "Успех",
@@ -837,8 +900,8 @@ class MainWindow(QMainWindow):
 
             if resp == QMessageBox.Ok:
                 import os
-                os.startfile(self.temp_excel_file)
-        except AttributeError:
+                os.startfile(file_name)
+        except ExportException:
             QMessageBox.warning(self, "Ошибка", "Сгенерируйте расписание перед выгрузкой")
         except Exception as e:
             QMessageBox.warning(self, "Ошибка", str(e))
@@ -871,10 +934,10 @@ class MainWindow(QMainWindow):
             result, rating = dialog.get_result()
             self.handle_generator_result(result, rating)
 
-    @staticmethod
-    def input_data():
-        input_dialog = InputDataDialog()
-        input_dialog.exec_()
+    def input_data(self):
+        if not self.input_dialog:  # Создаем окно только если оно еще не создано
+            self.input_dialog = InputDataDialog()
+        self.input_dialog.show()
 
     def handle_generator_result(self, result: schedule_maker.Schedule, rating: dict[str, int]):
         if self.rating is not None and self.rating["rate"] > rating["rate"]:
@@ -898,11 +961,10 @@ class MainWindow(QMainWindow):
         self.schedule_rating_label_update(self.rating)
 
 
-def global_exception_handler(exctype, value, tb):  # noqa
+def global_exception_handler(exctype, value, tb: traceback):  # noqa
     print("Произошла необработанная ошибка:", value)
     with open("error_log.txt", "a", encoding="utf-8") as f:
         f.write(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Произошла не обработанная ошибка: {value}\n\n")
-        f.write(traceback.format_exc() + "\n\n")
     db.save_data(data)
     sys.__excepthook__(exctype, value, traceback)
     if not build.no_console:
