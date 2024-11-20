@@ -165,6 +165,23 @@ class ScheduleGeneratorDialog(QDialog):
     def get_result(self):
         return self.result, self.rating
 
+    def event(self, event):
+        if event.type() == QEvent.Type(124):
+            self.show_help()
+            return True
+        return super().event(event)
+
+    def show_help(self):
+        # Отображение справки
+        help_message = (
+            "Справка по использованию программы:\n\n"
+            "В этом окне вы можете выбрать количество итераций для генерации лучшего расписания.\n"
+            "После выбора количества итераций нажмите кнопку 'Генерация'.\n"
+            "Во время генерации расписания будет отображаться прогресс и оставшееся время.\n"
+            "После завершения генерации расписания окно будет закрыто.\n"
+            "Результат генерации расписания будет доступен таблице.\n\n"
+        )
+        QMessageBox.information(self, "Справка", help_message)
 
 class InputDataDialog(QDialog):
     def __init__(self):

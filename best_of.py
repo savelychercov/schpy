@@ -4,9 +4,8 @@ import copy
 import random
 import time
 
-
 teachers_gaps_rating_modifier = 5
-offline_pairs_gaps_rating_modifier = 25
+offline_pairs_gaps_rating_modifier = 13
 owervorked_teachers_rating_modifier = 50
 unissued_hours_rating_modifier = 3
 
@@ -29,7 +28,8 @@ def shuffled_tuple(x: tuple) -> tuple:
 
 
 def sub_percentage(x: float, percentage: float) -> float:
-    return x - (x * percentage / 100)
+    # print(f"{x} - {percentage}% = {x - (x * percentage / 100)}")
+    return max(0, x - (x * percentage / 100))
 
 
 def shuffle_data(data_obj: db.Data) -> db.Data:
@@ -115,15 +115,19 @@ def rate_schedule(schedule: dict[str, list[db.Pair]], original_data: db.Data, re
     rate = 100
     teachers_gaps_count = count_teachers_gaps(original_data, remaining_data)
     rate = sub_percentage(rate, teachers_gaps_count * teachers_gaps_rating_modifier)
+    # print("after teachers_gaps_count", rate)
 
     offline_pairs_gaps = count_offline_pairs_gaps(schedule, original_data)
     rate = sub_percentage(rate, offline_pairs_gaps * offline_pairs_gaps_rating_modifier)
+    # print("after offline_pairs_gaps", rate)
 
     overworked_teachers = count_overworked_teachers(schedule)
     rate = sub_percentage(rate, overworked_teachers * owervorked_teachers_rating_modifier)
+    # print("after overworked_teachers", rate)
 
     unissued_hours = count_unissued_hours(remaining_data)
     rate = sub_percentage(rate, unissued_hours * unissued_hours_rating_modifier)
+    # print("after unissued_hours", rate)
 
     return max(0, rate)
 
