@@ -108,17 +108,18 @@ def distribute_pairs(data: db.Data) -> tuple[dict[str, list[db.Pair]], list[Sche
             # Ищем подходящего преподавателя для дисциплины
             if remaining_hours[group][discipline] == 0:  # M
                 continue
-            for teacher in data.teachers.values():
-                if not (discipline in teacher.disciplines and group in teacher.groups): continue
-                try:
-                    while remaining_hours[group][discipline] > 0:
-                        pair = choose_a_pair_time(full_schedule[group], discipline, group, teacher, data)
-                        full_schedule[group].append(pair)  # Добавляем пару в расписание
-                        remaining_hours[group][discipline] -= 2
-                except ScheduleError as e:
-                    e.hours = remaining_hours[group][discipline]
-                    errors.append(e)
-                break  # Прерываем поиск после нахождения первого подходящего преподавателя
+            for preset in data.teachers.values():
+                for teacher in preset:
+                    if not (discipline in teacher.disciplines and group in teacher.groups): continue
+                    try:
+                        while remaining_hours[group][discipline] > 0:
+                            pair = choose_a_pair_time(full_schedule[group], discipline, group, teacher, data)
+                            full_schedule[group].append(pair)  # Добавляем пару в расписание
+                            remaining_hours[group][discipline] -= 2
+                    except ScheduleError as e:
+                        e.hours = remaining_hours[group][discipline]
+                        errors.append(e)
+                    break  # Прерываем поиск после нахождения первого подходящего преподавателя
     return full_schedule, errors  # Возвращаем полное расписание
 
 
@@ -151,6 +152,6 @@ def make_full_schedule(data: db.Data) -> Schedule:
 
 if __name__ == "__main__":
     d = db.load_data()
-    full_sch, errs = make_full_schedule(d)
-    print_schedule(full_sch)
-    print_errors(errs)
+    sch = make_full_schedule(d)
+    print_schedule(sch.pairs)
+    print_errors(sch.errors)

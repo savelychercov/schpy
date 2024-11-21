@@ -12,10 +12,10 @@ from openpyxl.utils import get_column_letter
 import datetime
 import time
 import traceback
-import build
 import sys
 import copy
 import best_of
+from pprint import pp
 
 data: db.Data
 
@@ -183,6 +183,7 @@ class ScheduleGeneratorDialog(QDialog):
         )
         QMessageBox.information(self, "Справка", help_message)
 
+
 class InputDataDialog(QDialog):
     def __init__(self):
         super().__init__(parent=None)
@@ -241,7 +242,11 @@ class InputDataDialog(QDialog):
         self.back_button.clicked.connect(self.close)
         self.button_layout.addWidget(self.back_button)
 
-        self.button_layout.addStretch()
+        self.var_help_label = QLabel()
+        self.var_help_label.setFixedWidth(265)
+        self.var_help_label.setWordWrap(True)
+        self.button_layout.addWidget(self.var_help_label)
+
         self.layout.addLayout(self.button_layout)
 
         self.current_variable = None
@@ -287,9 +292,7 @@ class InputDataDialog(QDialog):
             self.data_table.setCellWidget(row, 0, dropdown)
         elif self.current_variable == "groups_shift":
             self.data_table.setItem(row, 0, QTableWidgetItem("Группа"))
-            self.data_table.setItem(row, 1, QTableWidgetItem("№"))
-            self.data_table.setItem(row, 2, QTableWidgetItem("ЧЧ:ММ - ЧЧ:ММ"))
-            self.data_table.setItem(row, 3, QTableWidgetItem("Онлайн / Офлайн"))
+            self.data_table.setItem(row, 1, QTableWidgetItem("Номер смены"))
         elif self.current_variable == "teachers":
             self.data_table.setItem(row, 0, QTableWidgetItem("ФИО"))
             self.data_table.setItem(row, 1, QTableWidgetItem("Дисциплины через запятую"))
@@ -336,6 +339,7 @@ class InputDataDialog(QDialog):
         self.data_table.setRowCount(0)
 
         if variable_name == "groups_shift":
+            self.var_help_label.setText("Здесь можно добавить группы для которых будет создаваться расписание")
             headers = ["Группа", "Смена"]
             self.data_table.setColumnCount(len(headers))
             self.data_table.setHorizontalHeaderLabels(headers)
@@ -356,6 +360,10 @@ class InputDataDialog(QDialog):
                 row += 1
 
         elif variable_name == "discipline_hours":
+            self.var_help_label.setText(
+                "Здесь можно добавить дисциплины и количество часов которые "
+                "нужно выставить на неделю, если дисциплина не нужна на неделе, "
+                "можно поставить ей 0 часов.")
             self.data_table.setColumnCount(3)
             self.data_table.setHorizontalHeaderLabels(["Группа", "Дисциплина", "Часы"])
             row = 0
@@ -368,17 +376,25 @@ class InputDataDialog(QDialog):
                     row += 1
 
         elif variable_name == "teachers":
+            self.var_help_label.setText(
+                "Здесь можно добавить преподавателей, дисциплины которые они ведут "
+                "и группы у которых они ведут.\nЕсли преподаватель "
+                "ведет разные дисциплины у разных групп, создайте преподавателей с "
+                "одинаковыми значениями \"Имени\" и задайте разные дисциплины и группы."
+            )
             self.data_table.setColumnCount(3)
             self.data_table.setHorizontalHeaderLabels(["Имя", "Дисциплины", "Группы"])
             row = 0
-            for name, teacher in variable_data.items():
-                self.data_table.insertRow(row)
-                self.data_table.setItem(row, 0, QTableWidgetItem(name))
-                self.data_table.setItem(row, 1, QTableWidgetItem(", ".join(teacher.disciplines)))
-                self.data_table.setItem(row, 2, QTableWidgetItem(", ".join(teacher.groups)))
-                row += 1
+            for name, presets in variable_data.items():
+                for teacher in presets:
+                    self.data_table.insertRow(row)
+                    self.data_table.setItem(row, 0, QTableWidgetItem(name))
+                    self.data_table.setItem(row, 1, QTableWidgetItem(", ".join(teacher.disciplines)))
+                    self.data_table.setItem(row, 2, QTableWidgetItem(", ".join(teacher.groups)))
+                    row += 1
 
         elif variable_name == "rooms":
+            self.var_help_label.setText("Здесь можно добавить аудитории в которых будут проводиться занятия")
             self.data_table.setColumnCount(2)
             self.data_table.setHorizontalHeaderLabels(["Аудитория", "Онлайн"])
             row = 0
@@ -389,6 +405,15 @@ class InputDataDialog(QDialog):
                 row += 1
 
         elif variable_name in ["teachers_work_hours", "rooms_availability_hours"]:
+            if variable_name == "teachers_work_hours":
+                self.var_help_label.setText(
+                    "Здесь можно отметить часы работы преподавателей, "
+                    "они идут по порядку слева направо")
+            else:
+                self.var_help_label.setText(
+                    "Здесь можно отметить доступность аудиторий, "
+                    "галочки обозначают что аудитория занята!"
+                )
             self._setup_schedule_table(variable_data)
 
         self.data_table.setEditTriggers(QTableWidget.DoubleClicked)
@@ -508,7 +533,11 @@ class InputDataDialog(QDialog):
                         name = self.data_table.item(row, 0).text()
                         disciplines = set(self.data_table.item(row, 1).text().split(", "))
                         groups = set(self.data_table.item(row, 2).text().split(", "))
-                        variable_data[name] = db.Teacher(name, disciplines, groups)
+                        if name not in variable_data:
+                            variable_data[name] = [db.Teacher(name, disciplines, groups)]
+                        else:
+                            variable_data[name].append(db.Teacher(name, disciplines, groups))
+
                         if name not in data.teachers_work_hours.keys():
                             data.teachers_work_hours[name] = db.TeachersSchedule()
                     except AttributeError:
@@ -521,6 +550,7 @@ class InputDataDialog(QDialog):
                     if teacher not in variable_data.keys():
                         data_copy.pop(teacher)
                 data.teachers_work_hours = data_copy
+                pp(variable_data)
 
             elif table_name == "rooms":
                 variable_data = {}
@@ -984,8 +1014,6 @@ def global_exception_handler(exctype, value, tb: traceback):  # noqa
         f.write(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} Произошла не обработанная ошибка: {value}\n\n")
     db.save_data(data)
     sys.__excepthook__(exctype, value, traceback)
-    if not build.no_console:
-        input(f"Программа завершена с ошибкой {value}\n\n{traceback.format_exc()}\n\n Нажмите Enter для выхода")
     sys.exit(1)
 
 
@@ -1003,6 +1031,4 @@ if __name__ == "__main__":
     window.show()
     ex_code = app.exec_()
     db.save_data(data)
-    if not build.no_console:
-        input("Программа завершена. Нажмите Enter для выхода")
     sys.exit(ex_code)

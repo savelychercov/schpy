@@ -104,3 +104,14 @@ QComboBox {
     margin: -15px;
     padding-left: 20px;
 }
+
+QLabel {
+    font-size: 20px;
+    color: #333;
+    margin: 5px 0;
+    background-color: #ddd;
+    padding: 10px;
+    border: none;
+    border-radius: 10px;
+    height: 40px;
+}
