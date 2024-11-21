@@ -32,11 +32,15 @@ class ScheduleGeneratorWorkerThread(QThread):
         self.best_schedule_counts = None
         self.progress_value = 0
         self.remaining_time = 0
+        self.is_running = True
 
     def run(self):
         start_time = time.time()
 
         for iteration in range(1, self.iterations + 1):
+            if not self.is_running:
+                break
+            print(f"Итерация {iteration}/{self.iterations}")
             # Обновляем только переменные прогресса
             passed_time = time.time() - start_time
             approx_time = self.iterations * passed_time / iteration
@@ -60,6 +64,9 @@ class ScheduleGeneratorWorkerThread(QThread):
             else:
                 del current_schedule_obj
 
+        if not self.is_running:
+            return
+
         # Завершение работы и отправка результата
         self.best_schedule_counts = best_of.get_counts(
             self.best_schedule_obj.pairs,
@@ -74,6 +81,11 @@ class ScheduleGeneratorWorkerThread(QThread):
             "unissued_hours": self.best_schedule_counts['unissued_hours']
         }
         self.result_ready.emit(self.best_schedule_obj, rating)
+        self.stop()
+
+    def stop(self):
+        self.is_running = False
+        self.quit()
 
 
 class ScheduleGeneratorDialog(QDialog):
@@ -126,6 +138,11 @@ class ScheduleGeneratorDialog(QDialog):
         layout.addWidget(self.remaining_time_label)
 
         self.setLayout(layout)
+
+    def closeEvent(self, event):
+        if self.worker_thread and self.worker_thread.isRunning():
+            self.worker_thread.stop()
+        super().closeEvent(event)
 
     def start_generation(self):
         self.generate_button.setEnabled(False)
@@ -815,6 +832,8 @@ class MainWindow(QMainWindow):
             "Педагог": "teacher",
             "Каб.": "classroom"
         }
+        if self.current_cell == "all":
+            return
         self.current_cell = {
             "row": row,
             "column": column,
@@ -955,6 +974,12 @@ class MainWindow(QMainWindow):
             raise e
 
     def sort_by(self):
+        if self.current_cell == "all":
+            self.set_pairs_to_table(self.current_schedule.pairs)
+            self.current_cell = None
+            self.sort_by_button.setText("Сформировать по...")
+            self.sort_by_button.setEnabled(False)
+            return
         if self.current_schedule is None:
             QMessageBox.warning(self, "Ошибка", "Сгенерируйте расписание перед сортировкой")
             return
@@ -973,6 +998,9 @@ class MainWindow(QMainWindow):
         )
         sorted_pairs = schedule_maker.sorted_pairs(sorted_pairs)
         self.set_pairs_to_table(sorted_pairs)
+        self.current_cell = "all"
+        self.sort_by_button.setText(f"Полное расписание")
+        self.sort_by_button.setEnabled(True)
 
     def generate_best_schedule(self):
         dialog = ScheduleGeneratorDialog()
