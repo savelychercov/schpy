@@ -1,3 +1,8 @@
+"""
+Создает .exe файл в папке build
+"""
+
+
 import shutil
 import PyInstaller.__main__
 import os
